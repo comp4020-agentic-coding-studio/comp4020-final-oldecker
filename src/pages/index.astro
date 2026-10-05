@@ -1,11 +1,13 @@
 ---
-import { desc, eq, isNull } from "drizzle-orm";
+import { desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../lib/db";
 import { COLORS, currentPerson } from "../lib/identity";
 import { plantHealth } from "../lib/plant";
-import { people, postImages, posts } from "../lib/schema";
+import { people, postImages, postScores, posts } from "../lib/schema";
+import { emojiForScore, SCORE_MAX, SCORE_MIN } from "../lib/temperature";
 
 const person = currentPerson(Astro.cookies);
+const sort = Astro.url.searchParams.get("sort") === "extreme" ? "extreme" : "new";
 
 const feed = person
   ? db
@@ -20,7 +22,9 @@ const feed = person
       .from(posts)
       .innerJoin(people, eq(posts.authorId, people.id))
       .where(isNull(posts.archivedAt))
-      .orderBy(desc(posts.createdAt))
+      // id as a tiebreaker: createdAt is second-resolution, so two posts in
+      // the same second would otherwise sort arbitrarily against each other
+      .orderBy(desc(posts.createdAt), desc(posts.id))
       .all()
   : [];
 
@@ -38,6 +42,37 @@ const images = person
       ]),
     )
   : {};
+
+// "extremest" sorts on the group's average lean (|avg score|), not any one
+// person's vote --- how strongly the room has landed towards 🔥 or ❄️
+// overall, regardless of which direction. Computed at read time, same as
+// the plant's health: no stored aggregate to keep in sync.
+const avgScores = person
+  ? Object.fromEntries(
+      db
+        .select({ postId: postScores.postId, avg: sql<number>`avg(${postScores.score})` })
+        .from(postScores)
+        .groupBy(postScores.postId)
+        .all()
+        .map((row) => [row.postId, row.avg]),
+    )
+  : {};
+
+// Each visitor's own existing vote (if any), so returning to the board
+// shows your slider where you left it rather than snapping back to neutral.
+const myScores = person
+  ? Object.fromEntries(
+      db
+        .select({ postId: postScores.postId, score: postScores.score })
+        .from(postScores)
+        .where(eq(postScores.personId, person.id))
+        .all()
+        .map((row) => [row.postId, row.score]),
+    )
+  : {};
+
+if (sort === "extreme")
+  feed.sort((a, b) => Math.abs(avgScores[b.id] ?? 0) - Math.abs(avgScores[a.id] ?? 0));
 
 const health = person ? plantHealth() : null;
 
@@ -301,7 +336,90 @@ const CATEGORY_LABEL: Record<string, string> = {
         display: inline-block;
       }
       .category-tag {
-        opacity: 0.6;
+        opacity: 0.8;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+      }
+      /* feeling vs doing: a colour, not just a label */
+      .category-emotional {
+        background: #f3dde3;
+        color: #8a3d53;
+      }
+      .category-practical {
+        background: #dde7f3;
+        color: #2f5a8a;
+      }
+      @media (prefers-color-scheme: dark) {
+        .category-emotional {
+          background: #4a2530;
+          color: #f0c3d1;
+        }
+        .category-practical {
+          background: #203349;
+          color: #bcd6f5;
+        }
+      }
+
+      .sort-toggle {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+      }
+      .sort-toggle a {
+        color: inherit;
+        opacity: 0.5;
+        text-decoration: none;
+      }
+      .sort-toggle a[aria-current="page"] {
+        opacity: 1;
+        font-weight: 600;
+        text-decoration: underline;
+      }
+
+      /* --- the ❄️<->🔥 slider ------------------------------------------- */
+      .temp-row {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin-top: 0.4rem;
+      }
+      .temp-slider {
+        flex: 1;
+        -webkit-appearance: none;
+        appearance: none;
+        height: 8px;
+        border-radius: 999px;
+        background: linear-gradient(to right, #6fa8d8, #e8e0d6 48%, #e8e0d6 52%, #e8795f);
+        outline: none;
+      }
+      .temp-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--card);
+        border: 2px solid var(--ink);
+        cursor: grab;
+      }
+      .temp-slider::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--card);
+        border: 2px solid var(--ink);
+        cursor: grab;
+      }
+      .temp-slider:active::-webkit-slider-thumb,
+      .temp-slider:active::-moz-range-thumb {
+        cursor: grabbing;
+      }
+      .temp-emoji {
+        font-size: 1.1rem;
+        width: 1.6rem;
+        text-align: center;
       }
       .post p {
         margin: 0 0 0.5rem;
@@ -424,12 +542,23 @@ const CATEGORY_LABEL: Record<string, string> = {
               <button type="submit">post</button>
             </form>
 
+            <div class="sort-toggle">
+              <a href="/" aria-current={sort === "new" ? "page" : undefined}>
+                newest
+              </a>
+              <a href="/?sort=extreme" aria-current={sort === "extreme" ? "page" : undefined}>
+                extremest 🔥❄️
+              </a>
+            </div>
+
             {feed.map((post) => (
               <article class="post">
                 <header>
                   <span class="avatar" style={`background:${post.authorColor}`} />
                   <strong>{post.authorName}</strong>
-                  <span class="category-tag">{CATEGORY_LABEL[post.category] ?? post.category}</span>
+                  <span class={`category-tag category-${post.category}`}>
+                    {CATEGORY_LABEL[post.category] ?? post.category}
+                  </span>
                   <time>{new Date(post.createdAt * 1000).toLocaleDateString()}</time>
                 </header>
                 <p>{post.body}</p>
@@ -440,6 +569,19 @@ const CATEGORY_LABEL: Record<string, string> = {
                     ))}
                   </div>
                 )}
+                <div class="temp-row">
+                  <input
+                    type="range"
+                    class="temp-slider"
+                    data-post-id={post.id}
+                    min={SCORE_MIN}
+                    max={SCORE_MAX}
+                    step="1"
+                    value={myScores[post.id] ?? 0}
+                    aria-label="rate this post from freezing to on fire"
+                  />
+                  <span class="temp-emoji">{emojiForScore(myScores[post.id] ?? 0)}</span>
+                </div>
               </article>
             ))}
           </>
@@ -450,6 +592,7 @@ const CATEGORY_LABEL: Record<string, string> = {
       <>
         <script src="../scripts/water-plant.ts" />
         <script src="../scripts/compress-image.ts" />
+        <script src="../scripts/temperature-slider.ts" />
       </>
     )}
   </body>
