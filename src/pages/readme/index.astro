@@ -1,0 +1,28 @@
+---
+// Publishes README.md at /readme/, rendered from the file read at request
+// time (not bundled at build time), so an edit to README.md shows up on the
+// next request with no rebuild. spec/invariants.test.ts checks every heading
+// appears here, in order.
+import { readFileSync } from "node:fs";
+import { marked } from "marked";
+
+// Read relative to the process's cwd, not import.meta.url --- the build
+// bundles this file into dist/server/chunks/, so a path relative to its own
+// source location wouldn't resolve. Both `astro dev` and the Dockerfile's
+// `node ./dist/server/entry.mjs` run with the repo root as cwd, and the
+// Dockerfile copies README.md there alongside the built server.
+const source = readFileSync("README.md", "utf8");
+const html = marked.parse(source, { async: false });
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About</title>
+  </head>
+  <body>
+    <main set:html={html} />
+  </body>
+</html>

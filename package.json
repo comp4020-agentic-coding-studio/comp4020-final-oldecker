@@ -4,14 +4,28 @@
   "type": "module",
   "scripts": {
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
-    "typecheck": "tsc --noEmit",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check",
     "check": "pnpm typecheck && pnpm test",
     "check:evidence": "node scripts/check-evidence.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@astrojs/node": "^9.4.5",
+    "astro": "^5.15.5",
+    "better-sqlite3": "^12.4.1",
+    "drizzle-orm": "^0.44.6",
+    "marked": "^16.4.1"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^24.0.0",
+    "drizzle-kit": "^0.31.6",
     "jsdom": "^30.1.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1"

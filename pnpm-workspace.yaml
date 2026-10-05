@@ -1,3 +1,9 @@
 # esbuild (used by Vitest) needs its postinstall to set up its native binary.
 allowBuilds:
+  # better-sqlite3's native binding is what persists everything to /data.
+  better-sqlite3: true
   esbuild: true
+  # not using Astro's built-in image pipeline (<Image>/<Picture>) --- photo
+  # compression happens client-side before upload instead, so sharp's native
+  # build isn't needed. Flip to true if that changes.
+  sharp: false

@@ -1,6 +1,10 @@
 node_modules/
 dist/
+.astro/
 *.log
+
+# the SQLite file under the persistent volume, for local dev outside Docker
+/data/
 
 # editor and OS junk
 .DS_Store
