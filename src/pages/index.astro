@@ -101,10 +101,19 @@ const CATEGORY_LABEL: Record<string, string> = {
         background: var(--card);
         margin-bottom: 1.5rem;
       }
+      /* stage affects the plant itself (growth); "just-watered" bumps the
+         wrapping element so the two transforms never fight over one box. */
+      #plant {
+        transition: transform 0.3s ease;
+      }
+      #plant.just-watered {
+        transform: scale(1.1);
+      }
       #plant svg {
         width: 72px;
         height: 72px;
         transition: transform 0.4s ease;
+        transform-origin: bottom center;
       }
       #plant[data-stage="wilting"] .leaf {
         stroke: #a88b5a;
@@ -122,11 +131,18 @@ const CATEGORY_LABEL: Record<string, string> = {
         stroke: #3f6b32;
         fill: #7fc45c;
       }
+      /* the plant visibly grows across stages, not just changes colour */
       #plant[data-stage="wilting"] svg {
-        transform: rotate(-6deg) scaleY(0.85);
+        transform: scale(0.8) rotate(-6deg);
       }
-      #plant.just-watered svg {
-        transform: scale(1.08);
+      #plant[data-stage="thirsty"] svg {
+        transform: scale(0.92);
+      }
+      #plant[data-stage="okay"] svg {
+        transform: scale(1.04);
+      }
+      #plant[data-stage="thriving"] svg {
+        transform: scale(1.2);
       }
       .plant-info {
         flex: 1;
@@ -139,19 +155,29 @@ const CATEGORY_LABEL: Record<string, string> = {
         font-size: 0.85rem;
         opacity: 0.7;
       }
+
+      /* --- the watering can -------------------------------------------- */
       #water-can {
+        position: relative;
         border: none;
         background: none;
         cursor: pointer;
-        padding: 0.4rem;
-        font-size: 1.8rem;
+        padding: 0.5rem;
+        color: var(--ink);
         line-height: 1;
         transition: transform 0.15s ease;
       }
       #water-can:active {
         transform: scale(0.9);
       }
-      #water-can.pouring {
+      .can-icon {
+        width: 2.6rem;
+        height: 2rem;
+        display: block;
+        transform-origin: 85% 70%; /* roughly the base of the can, not its spout tip */
+        transition: transform 0.15s ease;
+      }
+      #water-can.pouring .can-icon {
         animation: pour 0.7s ease;
       }
       @keyframes pour {
@@ -159,13 +185,49 @@ const CATEGORY_LABEL: Record<string, string> = {
           transform: rotate(0deg);
         }
         30% {
-          transform: rotate(-35deg) translateY(-2px);
+          transform: rotate(-35deg);
         }
         70% {
-          transform: rotate(-35deg) translateY(-2px);
+          transform: rotate(-35deg);
         }
         100% {
           transform: rotate(0deg);
+        }
+      }
+      .drop {
+        position: absolute;
+        top: 0.15rem;
+        right: 0.45rem;
+        width: 5px;
+        height: 7px;
+        border-radius: 0 50% 50% 50%;
+        background: #6fa8d8;
+        opacity: 0;
+        transform: rotate(45deg);
+      }
+      .drop:nth-of-type(2) {
+        right: 0.65rem;
+      }
+      .drop:nth-of-type(3) {
+        right: 0.25rem;
+      }
+      #water-can.pouring .drop {
+        animation: drip 0.7s ease calc(var(--i) * 0.1s + 0.15s);
+      }
+      @keyframes drip {
+        0% {
+          opacity: 0;
+          transform: rotate(45deg) translateY(0);
+        }
+        30% {
+          opacity: 1;
+        }
+        90% {
+          opacity: 0.8;
+        }
+        100% {
+          opacity: 0;
+          transform: rotate(45deg) translateY(16px);
         }
       }
 
@@ -297,7 +359,27 @@ const CATEGORY_LABEL: Record<string, string> = {
           <>
             <div class="plant-widget">
               <button id="water-can" aria-label="water the plant" data-threshold={health?.threshold}>
-                🪴
+                <svg class="can-icon" viewBox="0 0 64 48" aria-hidden="true">
+                  <rect x="8" y="16" width="28" height="20" rx="6" fill="currentColor" />
+                  <path
+                    d="M13 16 C13 6 31 6 31 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    d="M34 22 L54 10"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="5"
+                    stroke-linecap="round"
+                  />
+                  <circle cx="56" cy="8" r="4" fill="currentColor" />
+                </svg>
+                <span class="drop" style="--i: 0" />
+                <span class="drop" style="--i: 1" />
+                <span class="drop" style="--i: 2" />
               </button>
               <div id="plant" data-stage={health?.stage}>
                 <svg viewBox="0 0 64 64" aria-hidden="true">
