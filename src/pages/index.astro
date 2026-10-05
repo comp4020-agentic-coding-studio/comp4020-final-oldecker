@@ -1,10 +1,10 @@
 ---
-import { desc, eq, isNull, sql } from "drizzle-orm";
+import { desc, eq, isNull } from "drizzle-orm";
 import { db } from "../lib/db";
 import { COLORS, currentPerson } from "../lib/identity";
 import { plantHealth } from "../lib/plant";
 import { people, postImages, postScores, posts } from "../lib/schema";
-import { emojiForScore, SCORE_MAX, SCORE_MIN } from "../lib/temperature";
+import { emojiForScore, median, SCORE_MAX, SCORE_MIN, scoreToY } from "../lib/temperature";
 
 const person = currentPerson(Astro.cookies);
 const sort = Astro.url.searchParams.get("sort") === "extreme" ? "extreme" : "new";
@@ -43,20 +43,20 @@ const images = person
     )
   : {};
 
+// Every individual vote, grouped by post --- the raw material for the
+// median/strip-plot display and for "extremest" sorting. Never rendered as
+// a list of numbers anywhere (see the strip plot below): this is read once,
+// here, to derive the two aggregates that ARE shown.
+const scoresByPost: Record<number, number[]> = {};
+for (const row of db.select({ postId: postScores.postId, score: postScores.score }).from(postScores).all())
+  (scoresByPost[row.postId] ??= []).push(row.score);
+
 // "extremest" sorts on the group's average lean (|avg score|), not any one
 // person's vote --- how strongly the room has landed towards 🔥 or ❄️
-// overall, regardless of which direction. Computed at read time, same as
-// the plant's health: no stored aggregate to keep in sync.
-const avgScores = person
-  ? Object.fromEntries(
-      db
-        .select({ postId: postScores.postId, avg: sql<number>`avg(${postScores.score})` })
-        .from(postScores)
-        .groupBy(postScores.postId)
-        .all()
-        .map((row) => [row.postId, row.avg]),
-    )
-  : {};
+// overall, regardless of direction. Computed at read time, same as the
+// plant's health: no stored aggregate to keep in sync.
+const avgOf = (scores: number[] | undefined) =>
+  scores?.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
 // Each visitor's own existing vote (if any), so returning to the board
 // shows your slider where you left it rather than snapping back to neutral.
@@ -72,7 +72,41 @@ const myScores = person
   : {};
 
 if (sort === "extreme")
-  feed.sort((a, b) => Math.abs(avgScores[b.id] ?? 0) - Math.abs(avgScores[a.id] ?? 0));
+  feed.sort((a, b) => Math.abs(avgOf(scoresByPost[b.id])) - Math.abs(avgOf(scoresByPost[a.id])));
+
+// The strip plot's own scale: a vertical pixel height the rotated slider's
+// track length has to match exactly (see the CSS below) so the group's
+// votes and your own thumb read as one shared axis.
+const STRIP_H = 96;
+const STRIP_W = 20;
+
+// Everything a post's template fragment needs, precomputed here rather than
+// inside the template: Astro's template compiler doesn't accept a
+// block-bodied arrow (`.map(x => { const ...; return (...) })`) the way
+// plain TSX does, so per-post derivation lives in the frontmatter and the
+// template below stays a single-expression `.map`.
+const feedView = feed.map((post) => {
+  const scores = scoresByPost[post.id] ?? [];
+  const med = median(scores);
+  // group near-identical scores so their dots don't fully overlap --- a
+  // small, deterministic jitter, not a statistical one
+  const seen = new Map<number, number>();
+  const dots = scores.map((s) => {
+    const bucket = Math.round(s / 8);
+    const i = seen.get(bucket) ?? 0;
+    seen.set(bucket, i + 1);
+    const color = s === 0 ? "var(--temp-neutral-ink)" : s > 0 ? "var(--temp-hot)" : "var(--temp-cold)";
+    return { x: STRIP_W / 2 + ((i % 3) - 1) * 5, y: scoreToY(s, STRIP_H), color };
+  });
+  const stripLabel =
+    scores.length === 0
+      ? "no one has rated this post yet"
+      : `group rating: ${scores.length} vote${scores.length === 1 ? "" : "s"}, median ${emojiForScore(med ?? 0)}`;
+  const medianY = med === null ? null : scoreToY(med, STRIP_H);
+  const medianEmoji = med === null ? "–" : emojiForScore(med);
+  const medianTitle = med === null ? "no votes yet" : `median: ${Math.round(med)}`;
+  return { ...post, dots, stripLabel, medianY, medianEmoji, medianTitle, myScore: myScores[post.id] ?? 0 };
+});
 
 const health = person ? plantHealth() : null;
 
@@ -95,6 +129,13 @@ const CATEGORY_LABEL: Record<string, string> = {
         --ink: #2b2420;
         --card: #ffffff;
         --border: #e8e0d6;
+        --text-muted: #898781;
+        /* diverging pair for the temperature strip/slider --- dataviz skill's
+           validated default (blue<->red), re-validated against this app's
+           own --card surfaces (both modes pass all six checks) */
+        --temp-cold: #2a78d6;
+        --temp-hot: #e34948;
+        --temp-neutral-ink: #898781;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -102,6 +143,10 @@ const CATEGORY_LABEL: Record<string, string> = {
           --ink: #f1ebe3;
           --card: #262019;
           --border: #3a332a;
+          --text-muted: #898781;
+          --temp-cold: #3987e5;
+          --temp-hot: #e66767;
+          --temp-neutral-ink: #898781;
         }
       }
       * {
@@ -316,11 +361,18 @@ const CATEGORY_LABEL: Record<string, string> = {
 
       /* --- feed ---------------------------------------------------------- */
       .post {
+        display: flex;
+        align-items: stretch;
+        gap: 0.75rem;
         padding: 1rem;
         border: 1px solid var(--border);
         border-radius: 1rem;
         background: var(--card);
         margin-bottom: 1rem;
+      }
+      .post-main {
+        flex: 1;
+        min-width: 0; /* so a long image row/caption can't push the temp column off */
       }
       .post header {
         display: flex;
@@ -378,35 +430,81 @@ const CATEGORY_LABEL: Record<string, string> = {
         text-decoration: underline;
       }
 
-      /* --- the ❄️<->🔥 slider ------------------------------------------- */
-      .temp-row {
+      /* --- the ❄️<->🔥 slider, on the side of the post -------------------
+         A vertical slider (a horizontal <input> rotated -90deg) overlaid on
+         an SVG strip plot sharing the exact same length/scale, so the
+         group's votes and your own thumb sit on one visual axis: top =
+         SCORE_MAX (🔥), bottom = SCORE_MIN (❄️) --- see scoreToY() in
+         src/lib/temperature.ts, which this layout has to agree with. */
+      .post-temp {
+        flex: none;
+        width: 2.75rem;
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 0.6rem;
-        margin-top: 0.4rem;
+        gap: 0.3rem;
+        padding-top: 0.1rem;
+      }
+      .temp-emoji {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
+      .temp-stack {
+        position: relative;
+      }
+      .temp-strip {
+        position: absolute;
+        inset: 0;
+        pointer-events: none; /* decoration behind the slider, never blocks the drag */
+      }
+      .temp-median-tick {
+        stroke: var(--text-muted);
+        stroke-width: 2;
+        stroke-linecap: round;
+      }
+      .temp-slider-wrap {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        height: 8px; /* the rotated track's thickness */
+        transform: translate(-50%, -50%) rotate(-90deg);
       }
       .temp-slider {
-        flex: 1;
+        display: block;
+        width: 100%;
+        height: 100%;
+        margin: 0;
         -webkit-appearance: none;
         appearance: none;
-        height: 8px;
+        background: linear-gradient(
+          to right,
+          var(--temp-cold),
+          var(--border) 48%,
+          var(--border) 52%,
+          var(--temp-hot)
+        );
         border-radius: 999px;
-        background: linear-gradient(to right, #6fa8d8, #e8e0d6 48%, #e8e0d6 52%, #e8795f);
         outline: none;
+      }
+      .temp-median-label {
+        font-size: 0.95rem;
+        line-height: 1;
+        opacity: 0.8;
+        cursor: default;
       }
       .temp-slider::-webkit-slider-thumb {
         -webkit-appearance: none;
         appearance: none;
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
         background: var(--card);
         border: 2px solid var(--ink);
         cursor: grab;
       }
       .temp-slider::-moz-range-thumb {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
         background: var(--card);
         border: 2px solid var(--ink);
@@ -415,11 +513,6 @@ const CATEGORY_LABEL: Record<string, string> = {
       .temp-slider:active::-webkit-slider-thumb,
       .temp-slider:active::-moz-range-thumb {
         cursor: grabbing;
-      }
-      .temp-emoji {
-        font-size: 1.1rem;
-        width: 1.6rem;
-        text-align: center;
       }
       .post p {
         margin: 0 0 0.5rem;
@@ -551,36 +644,69 @@ const CATEGORY_LABEL: Record<string, string> = {
               </a>
             </div>
 
-            {feed.map((post) => (
+            {feedView.map((post) => (
               <article class="post">
-                <header>
-                  <span class="avatar" style={`background:${post.authorColor}`} />
-                  <strong>{post.authorName}</strong>
-                  <span class={`category-tag category-${post.category}`}>
-                    {CATEGORY_LABEL[post.category] ?? post.category}
+                <div class="post-main">
+                  <header>
+                    <span class="avatar" style={`background:${post.authorColor}`} />
+                    <strong>{post.authorName}</strong>
+                    <span class={`category-tag category-${post.category}`}>
+                      {CATEGORY_LABEL[post.category] ?? post.category}
+                    </span>
+                    <time>{new Date(post.createdAt * 1000).toLocaleDateString()}</time>
+                  </header>
+                  <p>{post.body}</p>
+                  {images[post.id]?.length > 0 && (
+                    <div class="post-images">
+                      {images[post.id].map((path) => (
+                        <img src={`/uploads/${path}`} alt="" loading="lazy" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div class="post-temp">
+                  <span class="temp-emoji" aria-hidden="true">
+                    {emojiForScore(post.myScore)}
                   </span>
-                  <time>{new Date(post.createdAt * 1000).toLocaleDateString()}</time>
-                </header>
-                <p>{post.body}</p>
-                {images[post.id]?.length > 0 && (
-                  <div class="post-images">
-                    {images[post.id].map((path) => (
-                      <img src={`/uploads/${path}`} alt="" loading="lazy" />
-                    ))}
+                  <div class="temp-stack" style={`width:${STRIP_W}px;height:${STRIP_H}px`}>
+                    <svg
+                      class="temp-strip"
+                      viewBox={`0 0 ${STRIP_W} ${STRIP_H}`}
+                      width={STRIP_W}
+                      height={STRIP_H}
+                      role="img"
+                      aria-label={post.stripLabel}
+                    >
+                      {post.dots.map((d) => (
+                        <circle cx={d.x} cy={d.y} r="4" fill={d.color} stroke="var(--card)" stroke-width="2" />
+                      ))}
+                      {post.medianY !== null && (
+                        <line
+                          x1="1"
+                          y1={post.medianY}
+                          x2={STRIP_W - 1}
+                          y2={post.medianY}
+                          class="temp-median-tick"
+                        />
+                      )}
+                    </svg>
+                    <div class="temp-slider-wrap" style={`width:${STRIP_H}px`}>
+                      <input
+                        type="range"
+                        class="temp-slider"
+                        data-post-id={post.id}
+                        min={SCORE_MIN}
+                        max={SCORE_MAX}
+                        step="1"
+                        value={post.myScore}
+                        aria-label={`rate this post from freezing to on fire; ${post.stripLabel}`}
+                      />
+                    </div>
                   </div>
-                )}
-                <div class="temp-row">
-                  <input
-                    type="range"
-                    class="temp-slider"
-                    data-post-id={post.id}
-                    min={SCORE_MIN}
-                    max={SCORE_MAX}
-                    step="1"
-                    value={myScores[post.id] ?? 0}
-                    aria-label="rate this post from freezing to on fire"
-                  />
-                  <span class="temp-emoji">{emojiForScore(myScores[post.id] ?? 0)}</span>
+                  <span class="temp-median-label" title={post.medianTitle}>
+                    {post.medianEmoji}
+                  </span>
                 </div>
               </article>
             ))}
