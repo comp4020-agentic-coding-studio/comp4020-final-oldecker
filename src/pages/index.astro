@@ -184,40 +184,53 @@ const CATEGORY_LABEL: Record<string, string> = {
         0% {
           transform: rotate(0deg);
         }
+        /* positive = clockwise: the spout (upper-right of the icon) swings
+           further right and dips down, towards the pivot at bottom-right
+           (transform-origin above) --- a lean to the right, tipping forward
+           to pour, not away from it. */
         30% {
-          transform: rotate(-35deg);
+          transform: rotate(35deg);
         }
         70% {
-          transform: rotate(-35deg);
+          transform: rotate(35deg);
         }
         100% {
           transform: rotate(0deg);
         }
       }
+      /* anchored roughly under where the spout tip swings to mid-pour
+         (further right and lower than its resting position, now that the
+         can leans right --- see the `pour` keyframes above) */
       .drop {
         position: absolute;
-        top: 0.15rem;
-        right: 0.45rem;
+        top: 0.45rem;
+        right: 0.15rem;
         width: 5px;
         height: 7px;
         border-radius: 0 50% 50% 50%;
         background: #6fa8d8;
         opacity: 0;
-        transform: rotate(45deg);
+        transform: rotate(45deg); /* shape only: turns the circle into a teardrop */
       }
       .drop:nth-of-type(2) {
-        right: 0.65rem;
+        right: 0.35rem;
       }
       .drop:nth-of-type(3) {
-        right: 0.25rem;
+        right: -0.05rem;
       }
       #water-can.pouring .drop {
         animation: drip 0.7s ease calc(var(--i) * 0.1s + 0.15s);
       }
+      /* translateY listed before (outer to) rotate(45deg): the fall is a
+         straight screen-space displacement, with the teardrop's own shape
+         rotation applied first and not carried into the fall direction.
+         (the reverse order --- rotate() outer --- was rotating the actual
+         translateY displacement by 45°, so the drop fell diagonally
+         instead of straight down.) */
       @keyframes drip {
         0% {
           opacity: 0;
-          transform: rotate(45deg) translateY(0);
+          transform: translateY(0) rotate(45deg);
         }
         30% {
           opacity: 1;
@@ -227,7 +240,7 @@ const CATEGORY_LABEL: Record<string, string> = {
         }
         100% {
           opacity: 0;
-          transform: rotate(45deg) translateY(16px);
+          transform: translateY(16px) rotate(45deg);
         }
       }
 
