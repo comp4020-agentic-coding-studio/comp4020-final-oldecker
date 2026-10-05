@@ -39,9 +39,13 @@ COPY --from=build /app/dist /app/dist
 # README.md is read at request time (src/pages/readme/index.astro), not
 # bundled, so it has to ship in the runtime image too.
 COPY --from=build /app/README.md /app/README.md
-# TODO once the schema lands: COPY --from=build /app/drizzle /app/drizzle
-# (committed migrations, applied at boot)
+# the committed migrations, applied at boot (see src/lib/db.ts)
+COPY --from=build /app/drizzle /app/drizzle
 
 ENV HOST=0.0.0.0
+# /data is the Fly volume (see fly.toml) --- the SQLite file and uploaded
+# photos both live there, so they survive a restart or a redeploy.
+ENV DB_PATH=/data/app.db
+ENV UPLOADS_DIR=/data/uploads
 EXPOSE 8080
 CMD ["node", "./dist/server/entry.mjs"]

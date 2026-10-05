@@ -1,6 +1,50 @@
 ---
-// Placeholder, same job as the old static one: prove the deploy path works
-// end to end. Replace this with the real app.
+import { desc, eq, isNull } from "drizzle-orm";
+import { db } from "../lib/db";
+import { COLORS, currentPerson } from "../lib/identity";
+import { plantHealth } from "../lib/plant";
+import { people, postImages, posts } from "../lib/schema";
+
+const person = currentPerson(Astro.cookies);
+
+const feed = person
+  ? db
+      .select({
+        id: posts.id,
+        category: posts.category,
+        body: posts.body,
+        createdAt: posts.createdAt,
+        authorName: people.name,
+        authorColor: people.color,
+      })
+      .from(posts)
+      .innerJoin(people, eq(posts.authorId, people.id))
+      .where(isNull(posts.archivedAt))
+      .orderBy(desc(posts.createdAt))
+      .all()
+  : [];
+
+const images = person
+  ? Object.fromEntries(
+      feed.map((post) => [
+        post.id,
+        db
+          .select({ path: postImages.path })
+          .from(postImages)
+          .where(eq(postImages.postId, post.id))
+          .orderBy(postImages.position)
+          .all()
+          .map((row) => row.path),
+      ]),
+    )
+  : {};
+
+const health = person ? plantHealth() : null;
+
+const CATEGORY_LABEL: Record<string, string> = {
+  emotional: "feeling",
+  practical: "doing",
+};
 ---
 
 <!doctype html>
@@ -8,13 +52,310 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Placeholder</title>
+    <title>the board</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #faf7f2;
+        --ink: #2b2420;
+        --card: #ffffff;
+        --border: #e8e0d6;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1c1815;
+          --ink: #f1ebe3;
+          --card: #262019;
+          --border: #3a332a;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        line-height: 1.5;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 4rem;
+      }
+
+      /* --- the plant ------------------------------------------------- */
+      .plant-widget {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+        margin-bottom: 1.5rem;
+      }
+      #plant svg {
+        width: 72px;
+        height: 72px;
+        transition: transform 0.4s ease;
+      }
+      #plant[data-stage="wilting"] .leaf {
+        stroke: #a88b5a;
+        fill: #d8c9a3;
+      }
+      #plant[data-stage="thirsty"] .leaf {
+        stroke: #8a9b5e;
+        fill: #c3cf97;
+      }
+      #plant[data-stage="okay"] .leaf {
+        stroke: #5c8a4a;
+        fill: #9ccb7e;
+      }
+      #plant[data-stage="thriving"] .leaf {
+        stroke: #3f6b32;
+        fill: #7fc45c;
+      }
+      #plant[data-stage="wilting"] svg {
+        transform: rotate(-6deg) scaleY(0.85);
+      }
+      #plant.just-watered svg {
+        transform: scale(1.08);
+      }
+      .plant-info {
+        flex: 1;
+      }
+      .plant-info h2 {
+        margin: 0 0 0.2rem;
+        font-size: 1rem;
+      }
+      #plant-stage {
+        font-size: 0.85rem;
+        opacity: 0.7;
+      }
+      #water-can {
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 0.4rem;
+        font-size: 1.8rem;
+        line-height: 1;
+        transition: transform 0.15s ease;
+      }
+      #water-can:active {
+        transform: scale(0.9);
+      }
+      #water-can.pouring {
+        animation: pour 0.7s ease;
+      }
+      @keyframes pour {
+        0% {
+          transform: rotate(0deg);
+        }
+        30% {
+          transform: rotate(-35deg) translateY(-2px);
+        }
+        70% {
+          transform: rotate(-35deg) translateY(-2px);
+        }
+        100% {
+          transform: rotate(0deg);
+        }
+      }
+
+      /* --- composer ---------------------------------------------------- */
+      #compose-form {
+        display: grid;
+        gap: 0.6rem;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+        margin-bottom: 2rem;
+      }
+      #compose-form textarea {
+        resize: vertical;
+        min-height: 4rem;
+        font: inherit;
+        padding: 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        background: transparent;
+        color: inherit;
+      }
+      #compose-form select,
+      #compose-form input[type="file"] {
+        font: inherit;
+      }
+      #compose-form button {
+        justify-self: start;
+        padding: 0.5rem 1.2rem;
+        border-radius: 999px;
+        border: none;
+        background: var(--ink);
+        color: var(--bg);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      /* --- feed ---------------------------------------------------------- */
+      .post {
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+        margin-bottom: 1rem;
+      }
+      .post header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.4rem;
+        font-size: 0.85rem;
+      }
+      .avatar {
+        width: 1.4rem;
+        height: 1.4rem;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .category-tag {
+        opacity: 0.6;
+      }
+      .post p {
+        margin: 0 0 0.5rem;
+        white-space: pre-wrap;
+      }
+      .post-images {
+        display: flex;
+        gap: 0.4rem;
+      }
+      .post-images img {
+        width: 96px;
+        height: 96px;
+        object-fit: cover;
+        border-radius: 0.6rem;
+      }
+      time {
+        opacity: 0.5;
+        font-size: 0.75rem;
+      }
+
+      /* --- join form ------------------------------------------------- */
+      .join {
+        display: grid;
+        gap: 0.8rem;
+        max-width: 320px;
+        margin: 3rem auto;
+        text-align: center;
+      }
+      .colors {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+      .colors label {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        cursor: pointer;
+        display: inline-block;
+        border: 2px solid transparent;
+      }
+      .colors input {
+        display: none;
+      }
+      .colors input:checked + label {
+        border-color: var(--ink);
+      }
+    </style>
   </head>
   <body>
     <main>
-      <h1>Placeholder</h1>
-      <p>This placeholder shows the deploy path works. Replace it with your app.</p>
-      <p><a href="/readme/">About this app</a></p>
+      {
+        !person ? (
+          <form class="join" method="post" action="/api/join">
+            <h1>pick a name and a colour</h1>
+            <input name="name" placeholder="your name" maxlength="40" required autofocus />
+            <div class="colors">
+              {COLORS.map((c, i) => (
+                <>
+                  <input type="radio" name="color" id={`c${i}`} value={c} checked={i === 0} />
+                  <label for={`c${i}`} style={`background:${c}`} />
+                </>
+              ))}
+            </div>
+            <button type="submit">join the board</button>
+          </form>
+        ) : (
+          <>
+            <div class="plant-widget">
+              <button id="water-can" aria-label="water the plant" data-threshold={health?.threshold}>
+                🪴
+              </button>
+              <div id="plant" data-stage={health?.stage}>
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <path
+                    class="leaf"
+                    d="M32 58 C32 40 32 30 32 20 M32 20 C20 20 12 10 12 4 C22 4 32 12 32 24 M32 24 C44 24 52 14 52 6 C40 6 32 16 32 28"
+                    fill="none"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                  />
+                  <rect x="22" y="54" width="20" height="8" rx="2" class="leaf" stroke-width="2" />
+                </svg>
+              </div>
+              <div class="plant-info">
+                <h2>the plant</h2>
+                <p id="plant-stage">
+                  {health?.waterersThisWeek} of {health?.threshold} this week
+                </p>
+              </div>
+            </div>
+
+            <form id="compose-form" method="post" action="/api/posts" enctype="multipart/form-data">
+              <select name="category" required>
+                <option value="emotional">feeling</option>
+                <option value="practical">doing</option>
+              </select>
+              <textarea name="body" placeholder="a little update..." required maxlength="2000" />
+              <input type="file" name="images" accept="image/*" multiple />
+              <button type="submit">post</button>
+            </form>
+
+            {feed.map((post) => (
+              <article class="post">
+                <header>
+                  <span class="avatar" style={`background:${post.authorColor}`} />
+                  <strong>{post.authorName}</strong>
+                  <span class="category-tag">{CATEGORY_LABEL[post.category] ?? post.category}</span>
+                  <time>{new Date(post.createdAt * 1000).toLocaleDateString()}</time>
+                </header>
+                <p>{post.body}</p>
+                {images[post.id]?.length > 0 && (
+                  <div class="post-images">
+                    {images[post.id].map((path) => (
+                      <img src={`/uploads/${path}`} alt="" loading="lazy" />
+                    ))}
+                  </div>
+                )}
+              </article>
+            ))}
+          </>
+        )
+      }
     </main>
+    {person && (
+      <>
+        <script src="../scripts/water-plant.ts" />
+        <script src="../scripts/compress-image.ts" />
+      </>
+    )}
   </body>
 </html>
