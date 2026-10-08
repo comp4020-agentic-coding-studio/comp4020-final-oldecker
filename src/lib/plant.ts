@@ -3,12 +3,15 @@
 // week shows up as a thirstier plant the next time anyone looks, which is
 // the whole mechanic: it dries out if fewer than THRESHOLD distinct people
 // open the site and water it in a week.
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { waterings } from "./schema";
+import { plant, waterings } from "./schema";
 
 export const WEEKLY_THRESHOLD = 5;
 const WEEK_SECONDS = 60 * 60 * 24 * 7;
+const PLANT_ID = 1; // one shared plant, one row
+const DEFAULT_NAME = "the plant";
+export const MAX_NAME_LENGTH = 30;
 
 export type PlantStage = "wilting" | "thirsty" | "okay" | "thriving";
 
@@ -37,4 +40,15 @@ export function plantHealth(): PlantHealth {
 
 export function recordWatering(personId: string): void {
   db.insert(waterings).values({ personId }).run();
+}
+
+export function plantName(): string {
+  return db.select({ name: plant.name }).from(plant).where(eq(plant.id, PLANT_ID)).get()?.name ?? DEFAULT_NAME;
+}
+
+export function setPlantName(name: string): void {
+  db.insert(plant)
+    .values({ id: PLANT_ID, name })
+    .onConflictDoUpdate({ target: plant.id, set: { name, updatedAt: sql`(unixepoch())` } })
+    .run();
 }

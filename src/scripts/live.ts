@@ -2,20 +2,20 @@
 // every open tab --- posts and votes still wait for one (see PROCESS.md for
 // why that line is drawn where it is). One EventSource per tab; the server
 // side of this is src/pages/api/events.ts.
+import type { PlantStage } from "../lib/plant-art";
 import { avatarById } from "../lib/avatars";
+import { applyPlantHealth, applyPlantName } from "./plant-dom";
+import { pourIntoPlant } from "./water-pour";
 
 interface PresenceEvent {
   here: Array<{ name: string; avatar: string }>;
 }
 interface WateredEvent {
-  stage: string;
+  stage: PlantStage;
   waterersThisWeek: number;
 }
 
 const presenceEl = document.querySelector<HTMLElement>("#presence");
-const plantEl = document.querySelector<HTMLElement>("#plant");
-const plantStageEl = document.querySelector<HTMLElement>("#plant-stage");
-const waterCan = document.querySelector<HTMLButtonElement>("#water-can");
 
 function renderPresence(here: PresenceEvent["here"]): void {
   if (!presenceEl) return;
@@ -32,24 +32,21 @@ function renderPresence(here: PresenceEvent["here"]): void {
     .join("");
 }
 
-function applyWatered(health: WateredEvent): void {
-  plantEl?.setAttribute("data-stage", health.stage);
-  if (plantStageEl)
-    plantStageEl.textContent = `${health.waterersThisWeek} of ${waterCan?.dataset.threshold ?? "?"} this week`;
-  plantEl?.classList.add("just-watered");
-  setTimeout(() => plantEl?.classList.remove("just-watered"), 900);
-}
-
 const source = new EventSource("/api/events");
 
 source.addEventListener("presence", (e) => {
-  const data = JSON.parse((e as MessageEvent).data) as PresenceEvent;
-  renderPresence(data.here);
+  renderPresence((JSON.parse((e as MessageEvent).data) as PresenceEvent).here);
 });
 
 source.addEventListener("watered", (e) => {
-  const data = JSON.parse((e as MessageEvent).data) as WateredEvent;
-  applyWatered(data);
+  // Someone else watered it --- play the same travelling-can animation on
+  // your screen too, not just update the plant's numbers silently.
+  void pourIntoPlant();
+  applyPlantHealth(JSON.parse((e as MessageEvent).data) as WateredEvent);
+});
+
+source.addEventListener("renamed", (e) => {
+  applyPlantName((JSON.parse((e as MessageEvent).data) as { name: string }).name);
 });
 
 // A dropped connection (a laptop sleeping, a flaky network) shouldn't need

@@ -67,6 +67,16 @@ export const postScores = sqliteTable(
   (table) => [primaryKey({ columns: [table.postId, table.personId] })],
 );
 
+// A single row (id always 1): the plant's name, the one piece of shared
+// state anyone can rename. Not per-person --- there's one plant.
+export const plant = sqliteTable("plant", {
+  id: integer("id").primaryKey(),
+  name: text("name").notNull(),
+  updatedAt: integer("updated_at")
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 // One row per person per watering tap. The plant's health is a read-time
 // query over this table (distinct waterers in the last 7 days), not a
 // stored counter --- nothing to keep in sync, nothing a missed write can

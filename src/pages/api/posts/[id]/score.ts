@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { APIRoute } from "astro";
 import { db } from "../../../../lib/db";
 import { currentPerson } from "../../../../lib/identity";
@@ -34,5 +34,15 @@ export const POST: APIRoute = async ({ params, request, cookies }) => {
     })
     .run();
 
-  return new Response(null, { status: 204 });
+  // The full set, not just this one vote --- the client redraws its own
+  // strip plot from this so your own rating shows up immediately, same
+  // layout a reload would produce, without a second round trip.
+  const scores = db
+    .select({ score: postScores.score })
+    .from(postScores)
+    .where(eq(postScores.postId, postId))
+    .all()
+    .map((row) => row.score);
+
+  return new Response(JSON.stringify({ scores }), { headers: { "content-type": "application/json" } });
 };

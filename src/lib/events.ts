@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events";
 
 export type LiveEvent =
   | { type: "watered"; data: { stage: string; waterersThisWeek: number } }
+  | { type: "renamed"; data: { name: string } }
   | { type: "presence"; data: { here: Array<{ name: string; avatar: string }> } };
 
 const bus = new EventEmitter();
