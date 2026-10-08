@@ -1,7 +1,7 @@
 CREATE TABLE `people` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
-	`color` text NOT NULL,
+	`avatar` text NOT NULL,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL
 );
 --> statement-breakpoint
@@ -11,6 +11,16 @@ CREATE TABLE `post_images` (
 	`path` text NOT NULL,
 	`position` integer NOT NULL,
 	FOREIGN KEY (`post_id`) REFERENCES `posts`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `post_scores` (
+	`post_id` integer NOT NULL,
+	`person_id` text NOT NULL,
+	`score` integer NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch()) NOT NULL,
+	PRIMARY KEY(`post_id`, `person_id`),
+	FOREIGN KEY (`post_id`) REFERENCES `posts`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`person_id`) REFERENCES `people`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
 CREATE TABLE `posts` (

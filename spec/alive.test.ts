@@ -15,7 +15,7 @@ it("a stranger can post, and the post is still there when they come back", async
   const join = await fetch(new URL("/api/join", baseUrl), {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", origin },
-    body: new URLSearchParams({ name: "Spec Stranger", color: "#e07a5f" }),
+    body: new URLSearchParams({ name: "Spec Stranger", avatar: "bunyip" }),
     redirect: "manual",
   });
   expect(join.status, "joining should redirect back to the board").toBe(303);

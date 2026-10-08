@@ -5,12 +5,15 @@
 import { sql } from "drizzle-orm";
 import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-// Lightweight identity: a name + a colour, no password. Good enough for a
-// closed group of ~15 people behind a shared link, not a public app.
+// Lightweight identity: a name + an avatar, no password. Good enough for a
+// closed group of ~15 people behind a shared link, not a public app. The
+// avatar is a key into src/lib/avatars.ts, not a colour --- it's what shows
+// up in the live presence strip (crit 9's multi-user decision), so it has
+// to be more legible at a glance than a colour swatch was.
 export const people = sqliteTable("people", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  color: text("color").notNull(),
+  avatar: text("avatar").notNull(),
   createdAt: integer("created_at")
     .notNull()
     .default(sql`(unixepoch())`),

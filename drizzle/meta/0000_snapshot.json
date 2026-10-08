@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "7e6ecfae-12ca-4283-b3df-8f1ab15434ff",
+  "id": "13d00ca2-6733-4900-aa17-c87951d9532b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "people": {
@@ -21,8 +21,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "color": {
-          "name": "color",
+        "avatar": {
+          "name": "avatar",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -92,6 +92,80 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "post_scores": {
+      "name": "post_scores",
+      "columns": {
+        "post_id": {
+          "name": "post_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "score": {
+          "name": "score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "post_scores_post_id_posts_id_fk": {
+          "name": "post_scores_post_id_posts_id_fk",
+          "tableFrom": "post_scores",
+          "tableTo": "posts",
+          "columnsFrom": [
+            "post_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "post_scores_person_id_people_id_fk": {
+          "name": "post_scores_person_id_people_id_fk",
+          "tableFrom": "post_scores",
+          "tableTo": "people",
+          "columnsFrom": [
+            "person_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "post_scores_post_id_person_id_pk": {
+          "columns": [
+            "post_id",
+            "person_id"
+          ],
+          "name": "post_scores_post_id_person_id_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
