@@ -138,14 +138,18 @@ const CATEGORY_LABEL: Record<string, string> = {
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --bg: #1c1815;
-          --ink: #f1ebe3;
-          --card: #262019;
-          --border: #3a332a;
-          --text-muted: #898781;
+          /* Tokyo Night --- re-checked WCAG contrast against this --card
+             before swapping in: ink 9.0:1, temp-cold 4.0:1, temp-hot
+             4.5:1, all comfortably clear of the 3:1 floor for non-text
+             marks (ink clears normal-text 4.5:1 too) */
+          --bg: #1a1b26;
+          --ink: #c0caf5;
+          --card: #24283b;
+          --border: #3b4261;
+          --text-muted: #565f89;
           --temp-cold: #3987e5;
           --temp-hot: #e66767;
-          --temp-neutral-ink: #898781;
+          --temp-neutral-ink: #565f89;
         }
       }
       * {
@@ -253,10 +257,13 @@ const CATEGORY_LABEL: Record<string, string> = {
         font-size: 0.85rem;
         opacity: 0.7;
       }
+      /* lives inside the h2, right where the name button sits --- it
+         replaces that button in place, not a form bolted on below
+         everything else in the widget */
       #rename-plant-form {
-        display: flex;
+        display: inline-flex;
+        align-items: center;
         gap: 0.3rem;
-        margin-top: 0.3rem;
       }
       #rename-plant-form[hidden] {
         display: none;
@@ -455,12 +462,12 @@ const CATEGORY_LABEL: Record<string, string> = {
       }
       @media (prefers-color-scheme: dark) {
         .post-emotional {
-          background: #2c2024;
-          border-left-color: #f0c3d1;
+          background: #2a2430;
+          border-left-color: #f6c9da;
         }
         .post-practical {
-          background: #1e2630;
-          border-left-color: #bcd6f5;
+          background: #1e2638;
+          border-left-color: #9ec6fa;
         }
       }
       .post-main {
@@ -504,12 +511,12 @@ const CATEGORY_LABEL: Record<string, string> = {
       }
       @media (prefers-color-scheme: dark) {
         .category-emotional {
-          background: #4a2530;
-          color: #f0c3d1;
+          background: #35283a;
+          color: #f6c9da;
         }
         .category-practical {
-          background: #203349;
-          color: #bcd6f5;
+          background: #253655;
+          color: #9ec6fa;
         }
       }
 
@@ -764,19 +771,19 @@ const CATEGORY_LABEL: Record<string, string> = {
               <div class="plant-info">
                 <h2>
                   <button type="button" id="plant-name" title="rename">{plantDisplayName}</button>
+                  <form id="rename-plant-form" hidden>
+                    <input
+                      name="name"
+                      value={plantDisplayName}
+                      maxlength={MAX_NAME_LENGTH}
+                      aria-label="rename the plant"
+                    />
+                    <button type="submit" aria-label="save name">✓</button>
+                  </form>
                 </h2>
                 <p id="plant-stage">
                   {health?.waterersThisWeek} of {health?.threshold} this week
                 </p>
-                <form id="rename-plant-form" hidden>
-                  <input
-                    name="name"
-                    value={plantDisplayName}
-                    maxlength={MAX_NAME_LENGTH}
-                    aria-label="rename the plant"
-                  />
-                  <button type="submit" aria-label="save name">✓</button>
-                </form>
               </div>
             </div>
 
