@@ -100,3 +100,63 @@ strangers, anxiety about losing a public number) is much smaller, and I'd
 rather have it visible only to the person themselves, not as a leaderboard.
 Not built yet --- this is the reasoning I want on record before I build it,
 not an after-the-fact justification.
+
+## Crit 9 ADR: what's live, and what waits for a reload
+
+The brief for this week is to make the app real-time and then make a
+deliberate call about how it behaves with several people on it at once. The
+mechanism is Server-Sent Events over a single shared in-memory `EventEmitter`
+(`src/lib/events.ts`) --- a shared-cpu-1x Fly machine is one process, so
+there's exactly one broker to keep in sync, which is what makes "no Redis, no
+separate pub/sub service" a reasonable choice rather than a corner cut; it
+stops being reasonable the moment this app runs on more than one machine, and
+that's written down right next to the `EventEmitter` so it isn't forgotten.
+
+The actual decision is narrower than "make it real-time": only two things go
+out on that channel --- presence (who's here, via `markPresent`/`markAbsent`
+in `src/lib/events.ts`) and the shared plant's state (a watering in
+`api/water.ts`, a rename in `api/plant/name.ts`). Posts, their photos, and
+reactions are deliberately **not** on it; they only show up on the next
+reload.
+
+**Why split it that way, rather than push everything:** the plant and
+presence are the two things this app is actually about making *co-present*
+--- the whole point of the shared plant is that it visibly responds to
+someone else showing up right now, and presence only means anything if it's
+live (a presence list that's stale by a page reload is just a guestbook). A
+post is different: it's something someone took time to write, consciously
+chose to publish, and the people reading it are catching up on their own
+time, not mid-conversation with the poster. Pushing every new post onto
+everyone's open tab instantly would turn a slow, asynchronous "little
+update" into something closer to a chat room's unread-badge pressure to
+react right now --- which is exactly the shape of app the brief warns
+against building by accident, and exactly what this project's README is
+arguing it is *not*. Reactions (the temperature slider) are grouped with
+posts for the same reason, plus a second one: the slider's own design
+already hides an individual's raw vote from everyone but that person, so
+streaming every vote live would mean streaming a stream of anonymous-looking
+deltas that still, in a group this small, let someone watching closely infer
+roughly who just reacted and how strongly --- a leak the current "catch up
+on reload" version doesn't have.
+
+**Alternative considered:** push posts live too, badge-style ("1 new
+update"), the way most feeds do it. I ruled this out for the reason above,
+not because it's harder to build --- the broadcast plumbing already exists,
+so adding a `"posted"` event is a few lines, not a redesign. If a pod argues
+the other side of this at crit, that's the argument to make: a closed
+15-person group arguably *wants* to know the instant a friend posts, the way
+you'd want to know a hangout invite landed, and "no reload needed" is squarely
+what the brief is testing for everywhere else in the app.
+
+**Conflict/reconnect behaviour:** there's no write-write conflict to resolve
+here --- watering and presence are both pure "someone did a thing, tell
+everyone," not an edit to shared state two people could clobber each other on
+(the closest thing, two people watering within the same week, is designed to
+just both count, per `plantHealth()`'s distinct-waterers read). On
+disconnect/reconnect, a client gets a fresh `presence` snapshot the instant
+its SSE stream reopens (`send({ type: "presence", data: { here:
+presenceSnapshot() } })` in `api/events.ts`), rather than diffing against
+whatever it last saw --- simpler, and self-healing against a dropped event,
+at the cost of a flicker if someone's tab briefly reconnects. Posts, being
+reload-only, have no reconnect behaviour to design at all; that's part of
+why keeping them off the live channel is less work, not just a safer design.

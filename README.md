@@ -50,13 +50,13 @@ or app.
 
 ## Where this honestly stands right now
 
-Right now I'd call this a worse blog post: you post, and the app has no
-way of telling you whether a friend saw it, reacted to it, or was even on
-the board at the same time as you — which, for something whose whole
-point is staying connected, is more than a cosmetic gap. It's genuinely a
-bit annoying already. What's missing for this to stop being that: real
-feedback that a post, a watering, or a vote landed *live*, not just on
-the next reload, and some visible sense of who's actually here right now.
-Both are planned, not built. A collaborative drawing game is also still
-just an idea, and matters less than those two for getting the core of
-this right.
+Right now I'd call this a better blog post than it was: you can see who's
+actually on the board with you right now, and watering the shared plant
+reaches everyone else's already-open tab within about a second, no reload
+needed — both live over a single Server-Sent Events channel (see PROCESS.md
+for the deliberate call on what's live versus reload-only, and why posts and
+reactions are the latter). What's still missing: posts and reactions still
+only show up on the next reload, which is a choice, not an oversight, but
+it's still true that a friend's new post doesn't announce itself the way
+their showing up does. A collaborative drawing game is also still just an
+idea, and matters less than the above for getting the core of this right.
