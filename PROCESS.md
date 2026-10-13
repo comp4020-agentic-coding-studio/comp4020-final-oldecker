@@ -208,8 +208,9 @@ exactly two things, both from the same fields: insert the row, then print
 one `console.log` line naming the person (not just their opaque id) so a
 crit presenter can narrate two people's actions apart by reading logs alone,
 the way the format asks for. It's wired into every mutating route: joining,
-posting, watering, renaming the plant, reacting, deleting, expiring, and
-painting a pixel (below). Like `waterings`, it's append-only and unpruned
+posting, watering, renaming the plant, reacting, deleting, expiring, painting
+a pixel, and renaming the wall (below). Like `waterings`, it's append-only
+and unpruned
 --- fine for ~15 people over one semester, worth naming rather than treating
 as free, same honesty as this file's "no Redis until more than one machine"
 line.

@@ -111,6 +111,18 @@ export const auditLog = sqliteTable(
   (table) => [index("audit_log_person_action_idx").on(table.personId, table.action, table.createdAt)],
 );
 
+// A single row (id always 1): the canvas's name, same renameable-by-anyone
+// shape as `plant` above --- kept in its own table rather than folded into
+// `plant` since the two are unrelated pieces of shared state that just
+// happen to share a UI pattern.
+export const canvasMeta = sqliteTable("canvas_meta", {
+  id: integer("id").primaryKey(),
+  name: text("name").notNull(),
+  updatedAt: integer("updated_at")
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 // One row per cell of the shared pixel canvas (src/lib/canvas.ts) --- (x, y)
 // is the primary key, so placing over an existing pixel is an upsert, not a
 // new row: the canvas is "what color is each cell right now", not a history

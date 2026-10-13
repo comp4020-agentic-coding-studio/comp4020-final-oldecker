@@ -5,6 +5,7 @@
 import type { PlantStage } from "../lib/plant-art";
 import { avatarById } from "../lib/avatars";
 import { PALETTE } from "../lib/canvas";
+import { applyCanvasName } from "./canvas-dom";
 import { applyPlantHealth, applyPlantName } from "./plant-dom";
 import { pourIntoPlant } from "./water-pour";
 
@@ -59,6 +60,10 @@ source.addEventListener("pixel", (e) => {
   const { x, y, colorIndex } = JSON.parse((e as MessageEvent).data) as PixelEvent;
   const rect = document.querySelector<SVGRectElement>(`#pixel-canvas rect[data-x="${x}"][data-y="${y}"]`);
   rect?.setAttribute("fill", PALETTE[colorIndex]?.hex ?? "#ffffff");
+});
+
+source.addEventListener("canvas_renamed", (e) => {
+  applyCanvasName((JSON.parse((e as MessageEvent).data) as { name: string }).name);
 });
 
 // A dropped connection (a laptop sleeping, a flaky network) shouldn't need

@@ -2,6 +2,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { AVATARS, avatarById } from "../lib/avatars";
 import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../lib/canvas";
+import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../lib/canvas-meta";
 import { db } from "../lib/db";
 import { presenceSnapshot } from "../lib/events";
 import { currentPerson } from "../lib/identity";
@@ -135,6 +136,7 @@ const lastPixelPlace = person
       .get()
   : undefined;
 const myCanvasCooldown = cooldownRemaining(lastPixelPlace?.createdAt ?? null);
+const canvasDisplayName = person ? canvasName() : null;
 
 const CATEGORY_LABEL: Record<string, string> = {
   emotional: "feeling",
@@ -447,6 +449,51 @@ const CATEGORY_LABEL: Record<string, string> = {
         margin: 0 0 0.6rem;
         font-size: 1rem;
       }
+      /* the name reads as plain text until you look for it --- identical
+         pattern to #plant-name/#rename-plant-form above, just scoped to the
+         canvas's own ids. */
+      #canvas-name {
+        font: inherit;
+        font-weight: inherit;
+        color: inherit;
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        border-bottom: 1px dotted transparent;
+      }
+      #canvas-name:hover,
+      #canvas-name:focus-visible {
+        border-bottom-color: var(--border);
+      }
+      #rename-canvas-form {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+      }
+      #rename-canvas-form[hidden] {
+        display: none;
+      }
+      #rename-canvas-form input {
+        font: inherit;
+        font-size: 0.8rem;
+        width: 7rem;
+        padding: 0.15rem 0.4rem;
+        border: 1px solid var(--border);
+        border-radius: 0.4rem;
+        background: transparent;
+        color: inherit;
+      }
+      #rename-canvas-form button {
+        border: none;
+        background: none;
+        cursor: pointer;
+        opacity: 0.6;
+        font-size: 0.9rem;
+      }
+      #rename-canvas-form button:hover {
+        opacity: 1;
+      }
       .canvas-wrap {
         max-width: 360px;
         margin: 0 auto;
@@ -466,6 +513,13 @@ const CATEGORY_LABEL: Record<string, string> = {
         border: 1px solid var(--border);
         border-radius: 0.5rem;
         touch-action: manipulation; /* a tap shouldn't also trigger a double-tap zoom on a 1/32nd-wide cell */
+        /* each cell is a 1x1 SVG unit scaled up ~11x by the viewBox --- at
+           the default smooth-edge antialiasing, adjacent cells blend into
+           faint grey seams against each other at that scale, reading as a
+           blurry grid rather than crisp pixels. crispEdges (inherited by
+           every <rect> below) snaps edges to the device pixel grid instead
+           --- also just the right look for pixel art specifically. */
+        shape-rendering: crispEdges;
       }
       #pixel-canvas rect {
         cursor: pointer;
@@ -917,7 +971,18 @@ const CATEGORY_LABEL: Record<string, string> = {
             </div>
 
             <div class="canvas-widget">
-              <h2>the wall</h2>
+              <h2>
+                <button type="button" id="canvas-name" title="rename">{canvasDisplayName}</button>
+                <form id="rename-canvas-form" hidden>
+                  <input
+                    name="name"
+                    value={canvasDisplayName}
+                    maxlength={MAX_CANVAS_NAME_LENGTH}
+                    aria-label="rename the wall"
+                  />
+                  <button type="submit" aria-label="save name">✓</button>
+                </form>
+              </h2>
               <div class="canvas-wrap">
                 <svg
                   id="pixel-canvas"

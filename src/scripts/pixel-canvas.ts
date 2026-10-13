@@ -2,6 +2,7 @@
 // places arrives through live.ts instead (same split as the plant: your own
 // action here, everyone else's over SSE).
 import { PALETTE, PLACE_COOLDOWN_SECONDS } from "../lib/canvas";
+import { applyCanvasName } from "./canvas-dom";
 
 const svg = document.querySelector<SVGSVGElement>("#pixel-canvas");
 const cooldownLabel = document.querySelector<HTMLElement>("#canvas-cooldown");
@@ -62,4 +63,41 @@ svg?.addEventListener("click", async (event) => {
   const placed = (await res.json()) as { colorIndex: number };
   rect.setAttribute("fill", PALETTE[placed.colorIndex]?.hex ?? "#ffffff");
   startCooldown(PLACE_COOLDOWN_SECONDS);
+});
+
+// Renaming the wall --- identical click-to-edit shape as the plant's own
+// rename in water-plant.ts, just pointed at the canvas's own ids/route.
+const nameButton = document.querySelector<HTMLButtonElement>("#canvas-name");
+const renameForm = document.querySelector<HTMLFormElement>("#rename-canvas-form");
+const renameInput = renameForm?.querySelector<HTMLInputElement>('input[name="name"]');
+
+function openEditor(): void {
+  if (!renameForm || !nameButton || !renameInput) return;
+  nameButton.hidden = true;
+  renameForm.hidden = false;
+  renameInput.value = nameButton.textContent ?? "";
+  renameInput.focus();
+  renameInput.select();
+}
+
+function closeEditor(): void {
+  if (!renameForm || !nameButton) return;
+  renameForm.hidden = true;
+  nameButton.hidden = false;
+}
+
+nameButton?.addEventListener("click", openEditor);
+
+renameForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const name = renameInput?.value.trim();
+  if (!name) return;
+
+  const res = await fetch("/api/canvas/name", { method: "POST", body: new URLSearchParams({ name }) });
+  if (res.ok) applyCanvasName((await res.json()).name);
+  closeEditor();
+});
+
+renameInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeEditor();
 });

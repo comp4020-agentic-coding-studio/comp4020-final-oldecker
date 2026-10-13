@@ -8,7 +8,8 @@ export type LiveEvent =
   | { type: "watered"; data: { stage: string; waterersThisWeek: number } }
   | { type: "renamed"; data: { name: string } }
   | { type: "presence"; data: { here: Array<{ name: string; avatar: string }> } }
-  | { type: "pixel"; data: { x: number; y: number; colorIndex: number } };
+  | { type: "pixel"; data: { x: number; y: number; colorIndex: number } }
+  | { type: "canvas_renamed"; data: { name: string } };
 
 const bus = new EventEmitter();
 bus.setMaxListeners(0); // one listener per open browser tab; no fixed ceiling
