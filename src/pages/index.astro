@@ -232,6 +232,7 @@ const CATEGORY_LABEL: Record<string, string> = {
       }
       .plant-info {
         flex: 1;
+        min-width: 0; /* same reasoning as #compose-form's fields: don't floor it at its content's width */
       }
       .plant-info h2 {
         margin: 0 0 0.2rem;
@@ -404,6 +405,11 @@ const CATEGORY_LABEL: Record<string, string> = {
       /* --- composer ---------------------------------------------------- */
       #compose-form {
         display: grid;
+        /* minmax(0, 1fr), not the implicit auto-sized track a bare `grid`
+           gives a single column: `auto` tracks size to content's max-content
+           width, so a wide-enough child (see min-width below) can still
+           force the column --- and the whole form --- past the viewport. */
+        grid-template-columns: minmax(0, 1fr);
         gap: 0.6rem;
         padding: 1rem;
         border: 1px solid var(--border);
@@ -414,15 +420,23 @@ const CATEGORY_LABEL: Record<string, string> = {
       #compose-form textarea {
         resize: vertical;
         min-height: 4rem;
-        font: inherit;
         padding: 0.5rem;
         border: 1px solid var(--border);
         border-radius: 0.5rem;
         background: transparent;
         color: inherit;
       }
+      /* grid/flex items default to `min-width: auto`, i.e. their own
+         content's min-content width as a floor, not 0 --- form controls'
+         native content (a select's longest option, a file input's label)
+         can make that floor wider than the screen at larger text sizes
+         (iOS Larger Text, say), which is what was pushing these past the
+         edge on mobile instead of shrinking with everything else. */
+      #compose-form textarea,
       #compose-form select,
       #compose-form input[type="file"] {
+        width: 100%;
+        min-width: 0;
         font: inherit;
       }
       #compose-form button {

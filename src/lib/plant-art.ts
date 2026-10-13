@@ -15,9 +15,11 @@ export type PlantStage = "wilting" | "thirsty" | "okay" | "thriving";
 
 // Every stage shares the same pot footprint/position so swapping markup
 // in place (on a live update) never jumps the layout, just varies colour
-// and decoration on top of it.
+// and decoration on top of it. `.plant-soil` gives water-pour.ts a stable
+// target to measure --- the pot's actual on-screen rect, not a guess ---
+// regardless of which stage's art is currently mounted.
 function pot(fill: string, decorated: boolean): string {
-  const base = `<rect x="20" y="54" width="24" height="8" rx="2" fill="${fill}" stroke="#00000022" stroke-width="1.5" />`;
+  const base = `<rect class="plant-soil" x="20" y="54" width="24" height="8" rx="2" fill="${fill}" stroke="#00000022" stroke-width="1.5" />`;
   const decoration = decorated
     ? `<path d="M24 58 h16 M24 60 h16" stroke="#ffffff55" stroke-width="1.2" stroke-linecap="round" />`
     : "";
