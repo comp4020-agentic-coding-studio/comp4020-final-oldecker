@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { logAction } from "../../lib/audit";
 import { AVATAR_IDS } from "../../lib/avatars";
 import { createPerson } from "../../lib/identity";
 
@@ -16,6 +17,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   if (!name) return new Response("name is required", { status: 400 });
   if (!AVATAR_IDS.includes(avatar)) return new Response("invalid avatar", { status: 400 });
 
-  createPerson(cookies, name, avatar);
+  const person = createPerson(cookies, name, avatar);
+  logAction(person, "person_join", `name=${name} avatar=${avatar}`);
   return redirect("/", 303);
 };

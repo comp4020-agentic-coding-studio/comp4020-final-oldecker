@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { logAction } from "../../lib/audit";
 import { db } from "../../lib/db";
 import { currentPerson } from "../../lib/identity";
 import { postImages, posts } from "../../lib/schema";
@@ -43,5 +44,6 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   for (const [position, path] of names.entries())
     db.insert(postImages).values({ postId, path, position }).run();
 
+  logAction(person, "post_create", `id=${postId} category=${category}`);
   return redirect("/", 303);
 };

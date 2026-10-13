@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { logAction } from "../../lib/audit";
 import { broadcast } from "../../lib/events";
 import { currentPerson } from "../../lib/identity";
 import { plantHealth, recordWatering } from "../../lib/plant";
@@ -11,6 +12,7 @@ export const POST: APIRoute = async ({ cookies }) => {
 
   recordWatering(person.id);
   const health = plantHealth();
+  logAction(person, "water", `waterersThisWeek=${health.waterersThisWeek}`);
   // Live for everyone watching, not just whoever clicked --- the plant is
   // one of this week's two things that update without a reload.
   broadcast({ type: "watered", data: health });

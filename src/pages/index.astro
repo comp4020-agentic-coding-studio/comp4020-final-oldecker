@@ -1,21 +1,29 @@
 ---
-import { desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { AVATARS, avatarById } from "../lib/avatars";
+import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../lib/canvas";
 import { db } from "../lib/db";
 import { presenceSnapshot } from "../lib/events";
 import { currentPerson } from "../lib/identity";
 import { MAX_NAME_LENGTH, plantHealth, plantName } from "../lib/plant";
 import { plantSvgForStage } from "../lib/plant-art";
-import { people, postImages, postScores, posts } from "../lib/schema";
+import { sweepExpiredPosts } from "../lib/posts";
+import { auditLog, people, pixels, postImages, postScores, posts } from "../lib/schema";
 import { emojiForScore, layoutDots, median, SCORE_MAX, SCORE_MIN, scoreToY } from "../lib/temperature";
 
 const person = currentPerson(Astro.cookies);
 const sort = Astro.url.searchParams.get("sort") === "extreme" ? "extreme" : "new";
 
+// Derived fresh on every render, same as plantHealth() below --- no cron, no
+// counter, nothing to keep in sync. The common case (nothing's expired) is
+// one cheap, empty-result SELECT; see src/lib/posts.ts.
+if (person) sweepExpiredPosts();
+
 const feed = person
   ? db
       .select({
         id: posts.id,
+        authorId: posts.authorId,
         category: posts.category,
         body: posts.body,
         createdAt: posts.createdAt,
@@ -24,7 +32,6 @@ const feed = person
       })
       .from(posts)
       .innerJoin(people, eq(posts.authorId, people.id))
-      .where(isNull(posts.archivedAt))
       // id as a tiebreaker: createdAt is second-resolution, so two posts in
       // the same second would otherwise sort arbitrarily against each other
       .orderBy(desc(posts.createdAt), desc(posts.id))
@@ -109,6 +116,26 @@ const plantDisplayName = person ? plantName() : null;
 // immediately, same as the live updates do afterwards.
 const initialPresence = person ? presenceSnapshot() : [];
 
+// The canvas's current state: one row per painted cell (unpainted cells just
+// aren't in the table --- see schema.ts), at most CANVAS_SIZE², trivial to
+// read in full on every render, same as the rest of this page's data.
+const paintedPixels = person ? db.select().from(pixels).all() : [];
+const pixelByCoord = new Map(paintedPixels.map((p) => [`${p.x},${p.y}`, p.colorIndex]));
+
+// This viewer's own remaining cooldown, computed the same way the API route
+// checks it (most recent pixel_place row), so a reload mid-cooldown shows
+// the real wait state instead of resetting to "ready".
+const lastPixelPlace = person
+  ? db
+      .select({ createdAt: auditLog.createdAt })
+      .from(auditLog)
+      .where(and(eq(auditLog.personId, person.id), eq(auditLog.action, "pixel_place")))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(1)
+      .get()
+  : undefined;
+const myCanvasCooldown = cooldownRemaining(lastPixelPlace?.createdAt ?? null);
+
 const CATEGORY_LABEL: Record<string, string> = {
   emotional: "feeling",
   practical: "doing",
@@ -176,6 +203,7 @@ const CATEGORY_LABEL: Record<string, string> = {
         padding: 1.5rem 1rem 4rem;
       }
       .plant-widget,
+      .canvas-widget,
       #compose-form,
       .sort-toggle {
         max-width: 640px;
@@ -402,6 +430,75 @@ const CATEGORY_LABEL: Record<string, string> = {
         }
       }
 
+      /* --- the shared pixel canvas --------------------------------------
+         r/place-style but tiny-scale: 32x32, a fixed palette, last-write-
+         wins, live over the same SSE channel as the plant (see PROCESS.md
+         for the conflict-handling reasoning). Hand-rolled inline SVG
+         <rect>s, same style as the plant art / temperature strip / avatars
+         elsewhere in this app, not <canvas>. */
+      .canvas-widget {
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+        margin-bottom: 1.5rem;
+      }
+      .canvas-widget h2 {
+        margin: 0 0 0.6rem;
+        font-size: 1rem;
+      }
+      .canvas-wrap {
+        max-width: 360px;
+        margin: 0 auto;
+      }
+      /* explicit sizing on the <svg> itself, not just its wrapper --- an
+         inline SVG with only a viewBox can still render at its intrinsic
+         default size inside a flex/grid child whose min-width:auto lets it
+         stay oversized (the same family of mobile-overflow bug already hit
+         once this session with the compose form's fields). display:block
+         closes a second, smaller gap: inline SVG defaults to inline, which
+         adds baseline whitespace underneath it. */
+      #pixel-canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        touch-action: manipulation; /* a tap shouldn't also trigger a double-tap zoom on a 1/32nd-wide cell */
+      }
+      #pixel-canvas rect {
+        cursor: pointer;
+      }
+      .canvas-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        margin-top: 0.8rem;
+        flex-wrap: wrap;
+      }
+      .canvas-palette {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+      }
+      .canvas-swatch {
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 50%;
+        border: 2px solid var(--border);
+        padding: 0;
+        cursor: pointer;
+      }
+      .canvas-swatch[aria-pressed="true"] {
+        border-color: var(--ink);
+      }
+      #canvas-cooldown {
+        margin: 0;
+        font-size: 0.8rem;
+        opacity: 0.7;
+      }
+
       /* --- composer ---------------------------------------------------- */
       #compose-form {
         display: grid;
@@ -532,6 +629,24 @@ const CATEGORY_LABEL: Record<string, string> = {
           background: #253655;
           color: #9ec6fa;
         }
+      }
+      /* only rendered server-side for the post's own author (see
+         index.astro's authorId check) --- never rendered-then-hidden for
+         anyone else's post */
+      .delete-post {
+        margin-left: auto;
+        border: none;
+        background: none;
+        padding: 0;
+        font: inherit;
+        font-size: 0.8rem;
+        color: inherit;
+        opacity: 0.5;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .delete-post:hover {
+        opacity: 0.9;
       }
 
       .sort-toggle {
@@ -801,6 +916,49 @@ const CATEGORY_LABEL: Record<string, string> = {
               </div>
             </div>
 
+            <div class="canvas-widget">
+              <h2>the wall</h2>
+              <div class="canvas-wrap">
+                <svg
+                  id="pixel-canvas"
+                  viewBox={`0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`}
+                  role="img"
+                  aria-label="a shared pixel canvas everyone can paint on, one cell at a time"
+                >
+                  {Array.from({ length: CANVAS_SIZE }).map((_, y) =>
+                    Array.from({ length: CANVAS_SIZE }).map((_, x) => (
+                      <rect
+                        x={x}
+                        y={y}
+                        width="1"
+                        height="1"
+                        fill={PALETTE[pixelByCoord.get(`${x},${y}`) ?? 0]?.hex ?? "#ffffff"}
+                        data-x={x}
+                        data-y={y}
+                      />
+                    )),
+                  )}
+                </svg>
+              </div>
+              <div class="canvas-controls">
+                <div class="canvas-palette" role="radiogroup" aria-label="pixel colour">
+                  {PALETTE.map((c, i) => (
+                    <button
+                      type="button"
+                      class="canvas-swatch"
+                      data-color-index={i}
+                      aria-pressed={i === 0}
+                      aria-label={`colour ${i + 1}`}
+                      style={`background:${c.hex}`}
+                    />
+                  ))}
+                </div>
+                <p id="canvas-cooldown" data-cooldown={myCanvasCooldown}>
+                  {myCanvasCooldown > 0 ? `wait ${myCanvasCooldown}s to place again` : "ready to place"}
+                </p>
+              </div>
+            </div>
+
             <form id="compose-form" method="post" action="/api/posts" enctype="multipart/form-data">
               <select name="category" required>
                 <option value="emotional">feeling</option>
@@ -822,7 +980,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 
             <div class="feed">
               {feedView.map((post) => (
-              <article class={`post post-${post.category}`}>
+              <article class={`post post-${post.category}`} data-post-id={post.id}>
                 <div class="post-main">
                   <header>
                     <span class="avatar">
@@ -833,6 +991,11 @@ const CATEGORY_LABEL: Record<string, string> = {
                       {CATEGORY_LABEL[post.category] ?? post.category}
                     </span>
                     <time>{new Date(post.createdAt * 1000).toLocaleDateString()}</time>
+                    {post.authorId === person.id && (
+                      <button type="button" class="delete-post" data-post-id={post.id}>
+                        delete
+                      </button>
+                    )}
                   </header>
                   <p>{post.body}</p>
                   {images[post.id]?.length > 0 && (
@@ -899,6 +1062,8 @@ const CATEGORY_LABEL: Record<string, string> = {
         <script src="../scripts/water-plant.ts" />
         <script src="../scripts/compress-image.ts" />
         <script src="../scripts/temperature-slider.ts" />
+        <script src="../scripts/delete-post.ts" />
+        <script src="../scripts/pixel-canvas.ts" />
         <script src="../scripts/live.ts" />
       </>
     )}

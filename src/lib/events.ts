@@ -7,7 +7,8 @@ import { EventEmitter } from "node:events";
 export type LiveEvent =
   | { type: "watered"; data: { stage: string; waterersThisWeek: number } }
   | { type: "renamed"; data: { name: string } }
-  | { type: "presence"; data: { here: Array<{ name: string; avatar: string }> } };
+  | { type: "presence"; data: { here: Array<{ name: string; avatar: string }> } }
+  | { type: "pixel"; data: { x: number; y: number; colorIndex: number } };
 
 const bus = new EventEmitter();
 bus.setMaxListeners(0); // one listener per open browser tab; no fixed ceiling

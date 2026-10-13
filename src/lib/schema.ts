@@ -1,9 +1,9 @@
 // The smallest schema that can carry this week's core interaction: someone
 // posts a little update (with up to 3 photos), and the shared plant records
-// who's watered it. Everything here is additive-only for now --- archiving
-// (posts) and pruning (old waterings) are next week's layer.
+// who's watered it. Pruning (old waterings) is still unbuilt --- see
+// waterings' own comment, and auditLog's below, for why that's fine so far.
 import { sql } from "drizzle-orm";
-import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 // Lightweight identity: a name + an avatar, no password. Good enough for a
 // closed group of ~15 people behind a shared link, not a public app. The
@@ -30,9 +30,6 @@ export const posts = sqliteTable("posts", {
   createdAt: integer("created_at")
     .notNull()
     .default(sql`(unixepoch())`),
-  // null while live; set once the 3-month archive sweep moves it off the
-  // main board. Not written yet --- next week's layer.
-  archivedAt: integer("archived_at"),
 });
 
 export const postImages = sqliteTable("post_images", {
@@ -90,3 +87,47 @@ export const waterings = sqliteTable("waterings", {
     .notNull()
     .default(sql`(unixepoch())`),
 });
+
+// Append-only "who did what": every mutation in the app writes one row here
+// (see src/lib/audit.ts), which is both a durable DB trail and the source of
+// each console line a crit presenter reads live off `flyctl logs`. personId
+// is nullable --- the 60-day post-expiry sweep is a system action with no
+// person to attribute it to, and blaming the original author would make an
+// automatic expiry look, in the logs, like that person deleting their own
+// post. Like waterings, this is unbounded/unpruned --- fine for ~15 people
+// over a semester, same honesty as this file's other "good enough for now,
+// not at a different scale" calls.
+export const auditLog = sqliteTable(
+  "audit_log",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    personId: text("person_id").references(() => people.id),
+    action: text("action").notNull(),
+    detail: text("detail").notNull(),
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("audit_log_person_action_idx").on(table.personId, table.action, table.createdAt)],
+);
+
+// One row per cell of the shared pixel canvas (src/lib/canvas.ts) --- (x, y)
+// is the primary key, so placing over an existing pixel is an upsert, not a
+// new row: the canvas is "what color is each cell right now", not a history
+// of every placement (the audit log already carries that, via pixel_place
+// rows, for anyone who wants it).
+export const pixels = sqliteTable(
+  "pixels",
+  {
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+    colorIndex: integer("color_index").notNull(),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id),
+    placedAt: integer("placed_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [primaryKey({ columns: [table.x, table.y] })],
+);

@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { logAction } from "../../../lib/audit";
 import { broadcast } from "../../../lib/events";
 import { currentPerson } from "../../../lib/identity";
 import { MAX_NAME_LENGTH, setPlantName } from "../../../lib/plant";
@@ -17,6 +18,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (!name) return new Response("a plant needs a name", { status: 400 });
 
   setPlantName(name);
+  logAction(person, "plant_rename", `name=${name}`);
   broadcast({ type: "renamed", data: { name } });
   return new Response(JSON.stringify({ name }), { headers: { "content-type": "application/json" } });
 };

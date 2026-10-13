@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type { APIRoute } from "astro";
+import { logAction } from "../../../../lib/audit";
 import { db } from "../../../../lib/db";
 import { currentPerson } from "../../../../lib/identity";
 import { postScores } from "../../../../lib/schema";
@@ -33,6 +34,8 @@ export const POST: APIRoute = async ({ params, request, cookies }) => {
       set: { score, updatedAt: sql`(unixepoch())` },
     })
     .run();
+
+  logAction(person, "post_score", `postId=${postId} score=${score}`);
 
   // The full set, not just this one vote --- the client redraws its own
   // strip plot from this so your own rating shows up immediately, same

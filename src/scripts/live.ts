@@ -1,9 +1,10 @@
-// The live channel: presence and the plant update without a reload, for
-// every open tab --- posts and votes still wait for one (see PROCESS.md for
-// why that line is drawn where it is). One EventSource per tab; the server
-// side of this is src/pages/api/events.ts.
+// The live channel: presence, the plant, and the pixel canvas update without
+// a reload, for every open tab --- posts and votes still wait for one (see
+// PROCESS.md for why that line is drawn where it is). One EventSource per
+// tab; the server side of this is src/pages/api/events.ts.
 import type { PlantStage } from "../lib/plant-art";
 import { avatarById } from "../lib/avatars";
+import { PALETTE } from "../lib/canvas";
 import { applyPlantHealth, applyPlantName } from "./plant-dom";
 import { pourIntoPlant } from "./water-pour";
 
@@ -13,6 +14,11 @@ interface PresenceEvent {
 interface WateredEvent {
   stage: PlantStage;
   waterersThisWeek: number;
+}
+interface PixelEvent {
+  x: number;
+  y: number;
+  colorIndex: number;
 }
 
 const presenceEl = document.querySelector<HTMLElement>("#presence");
@@ -47,6 +53,12 @@ source.addEventListener("watered", (e) => {
 
 source.addEventListener("renamed", (e) => {
   applyPlantName((JSON.parse((e as MessageEvent).data) as { name: string }).name);
+});
+
+source.addEventListener("pixel", (e) => {
+  const { x, y, colorIndex } = JSON.parse((e as MessageEvent).data) as PixelEvent;
+  const rect = document.querySelector<SVGRectElement>(`#pixel-canvas rect[data-x="${x}"][data-y="${y}"]`);
+  rect?.setAttribute("fill", PALETTE[colorIndex]?.hex ?? "#ffffff");
 });
 
 // A dropped connection (a laptop sleeping, a flaky network) shouldn't need
