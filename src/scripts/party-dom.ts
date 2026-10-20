@@ -26,12 +26,19 @@ const yourChip = document.querySelector<HTMLElement>("#party-you");
 function guestEl(guest: PartyGuest, isOwn: boolean): HTMLElement {
   const avatar = avatarById(guest.avatar);
   const el = document.createElement("span");
-  el.className = "party-room-avatar";
+  el.className = "party-guest party-room-avatar";
   el.dataset.personId = guest.personId;
   if (isOwn) el.dataset.own = "true";
   el.title = guest.name;
-  el.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true">${avatar?.svg ?? ""}</svg>`;
+  // Matches index.astro's SSR markup exactly: an avatar circle plus a name
+  // label underneath, so a person who joins live over SSE looks identical
+  // to one rendered on the page's first load.
+  el.innerHTML = `<span class="party-avatar-circle"><svg viewBox="0 0 64 64" aria-hidden="true">${avatar?.svg ?? ""}</svg></span><span class="party-guest-name">${escapeHtml(guest.name)}</span>`;
   return el;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function refreshEmptyAndOwnState(ownPersonId: string): void {

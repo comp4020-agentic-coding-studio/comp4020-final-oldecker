@@ -170,6 +170,14 @@ const CATEGORY_LABEL: Record<string, string> = {
         --temp-cold: #2a78d6;
         --temp-hot: #e34948;
         --temp-neutral-ink: #898781;
+        /* a warm amber for the party room specifically --- distinct from
+           the cold/hot pair and the feeling/doing category tags, so it
+           reads as its own, celebratory thing. #b8791f clears the 3:1 floor
+           for non-text UI/graphics against both --card (3.63:1) and --bg
+           (3.39:1); --party-glow is the same hue at low opacity, used only
+           as a background tint, never for text. */
+        --party-accent: #b8791f;
+        --party-glow: #b8791f14;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -185,6 +193,11 @@ const CATEGORY_LABEL: Record<string, string> = {
           --temp-cold: #3987e5;
           --temp-hot: #e66767;
           --temp-neutral-ink: #565f89;
+          /* #e8a33d clears 3:1 against both --card (6.75:1) and --bg
+             (7.93:1) here, comfortably --- lighter than the light-mode
+             value since it has to hold up against a dark surface instead. */
+          --party-accent: #e8a33d;
+          --party-glow: #e8a33d1a;
         }
       }
       * {
@@ -577,12 +590,14 @@ const CATEGORY_LABEL: Record<string, string> = {
          Drag your own avatar from #party-you into the dropzone to signal
          you're free to hang out; drag an in-room avatar back out to leave
          early (src/scripts/party-drag.ts). Same bordered-card recipe as
-         .plant-widget/.canvas-widget above. */
+         .plant-widget/.canvas-widget above, warmed up a little --- a soft
+         gradient card and a dashed-circle dropzone read as an invitation
+         rather than just another form control. */
       .party-widget {
         padding: 1rem;
         border: 1px solid var(--border);
         border-radius: 1rem;
-        background: var(--card);
+        background: linear-gradient(165deg, var(--card), var(--party-glow));
         margin-bottom: 1.5rem;
       }
       .party-widget h2 {
@@ -592,11 +607,11 @@ const CATEGORY_LABEL: Record<string, string> = {
       .party-hint {
         margin: 0 0 0.8rem;
         font-size: 0.8rem;
-        opacity: 0.6;
+        color: var(--text-muted);
       }
       .party-row {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 0.8rem;
       }
       /* flex children default to min-width:auto, which can floor them at
@@ -607,57 +622,96 @@ const CATEGORY_LABEL: Record<string, string> = {
       .party-room-dropzone {
         flex: 1;
         min-width: 0;
-        min-height: 3.2rem;
+        min-height: 4.5rem;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         flex-wrap: wrap;
-        gap: 0.4rem;
-        padding: 0.5rem;
-        border: 1px dashed var(--border);
-        border-radius: 0.75rem;
+        gap: 0.6rem;
+        padding: 0.6rem;
+        border: 2px dashed var(--party-accent);
+        border-radius: 1rem;
+        background: var(--party-glow);
+        transition:
+          border-color 0.15s ease,
+          background 0.15s ease;
       }
       .party-room-dropzone.drag-over {
         border-color: var(--ink);
+        border-style: solid;
         background: var(--bg);
       }
       .party-room-guests {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.4rem;
+        gap: 0.6rem;
       }
       .party-room-empty {
+        align-self: center;
         font-size: 0.8rem;
-        opacity: 0.5;
+        color: var(--text-muted);
       }
-      /* :global() on .party-room-avatar and .party-drag-ghost specifically:
-         Astro's scoped CSS only attaches its scoping attribute to elements
-         it renders server-side --- an element created client-side via
-         document.createElement (party-dom.ts's guestEl(), and the drag
-         ghost) never gets that attribute, so an ordinary scoped rule
-         silently never matches it (renders at its default 0-width inline
-         size). .party-you-chip doesn't need this: it's always SSR-rendered,
-         only ever shown/hidden, never created in JS. */
-      .party-you-chip,
-      :global(.party-room-avatar) {
-        width: 2rem;
-        height: 2rem;
-        border-radius: 50%;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        display: inline-flex;
+      /* a chip is the avatar circle plus its name, stacked --- the shared
+         layout for both #party-you (always SSR-rendered) and every in-room
+         guest (SSR on first load, then built client-side on every
+         join/leave by party-dom.ts's guestEl()). :global() on the parts
+         that can be client-built: Astro's scoped CSS only attaches its
+         scoping attribute to elements it renders server-side, so a plain
+         scoped rule silently never matches an element from
+         document.createElement (it'd render at its default inline size). */
+      .party-guest,
+      :global(.party-guest) {
+        display: flex;
+        flex-direction: column;
         align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        flex: none;
+        gap: 0.2rem;
+        width: 3rem;
         cursor: grab;
         /* a touch-drag must not also scroll the page --- same mechanism
            #pixel-canvas already needs for its own pointer gestures. */
         touch-action: none;
       }
-      .party-you-chip svg,
-      :global(.party-room-avatar svg) {
+      .party-avatar-circle,
+      :global(.party-avatar-circle) {
+        width: 2.2rem;
+        height: 2.2rem;
+        border-radius: 50%;
+        background: var(--card);
+        border: 2px solid var(--party-accent);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex: none;
+        transition:
+          transform 0.15s ease,
+          border-color 0.15s ease;
+      }
+      /* a little lift on hover/press --- a small, friendly nudge that this
+         thing wants to be picked up, not just a static icon. */
+      .party-guest:hover .party-avatar-circle,
+      :global(.party-guest:hover .party-avatar-circle) {
+        transform: translateY(-2px);
+        border-color: var(--ink);
+      }
+      .party-guest:active .party-avatar-circle,
+      :global(.party-guest:active .party-avatar-circle) {
+        cursor: grabbing;
+        transform: scale(0.95);
+      }
+      .party-avatar-circle svg,
+      :global(.party-avatar-circle svg) {
         width: 100%;
         height: 100%;
+      }
+      .party-guest-name,
+      :global(.party-guest-name) {
+        max-width: 100%;
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .party-you-chip[hidden] {
         display: none;
@@ -665,13 +719,12 @@ const CATEGORY_LABEL: Record<string, string> = {
       /* the dragged copy that actually follows the pointer --- the source
          avatar never moves itself, so a failed drop has nothing to snap
          back from (see party-drag.ts). Always created client-side, so
-         :global() for the same reason as .party-room-avatar above. */
+         :global() for the same reason as .party-guest above. */
       :global(.party-drag-ghost) {
         position: fixed;
         top: 0;
         left: 0;
-        width: 2rem;
-        height: 2rem;
+        width: 3rem;
         pointer-events: none;
         z-index: 1000;
         opacity: 0.85;
@@ -1060,19 +1113,22 @@ const CATEGORY_LABEL: Record<string, string> = {
             </div>
 
             <div class="party-widget">
-              <h2>the party room</h2>
+              <h2>🎉 the party room</h2>
               <p class="party-hint">drag your avatar in to say you're free to hang out for a couple of hours</p>
               <div class="party-row">
                 <span
                   id="party-you"
-                  class="party-you-chip"
+                  class="party-guest party-you-chip"
                   title="drag me into the room"
                   data-person-id={person.id}
                   data-name={person.name}
                   data-avatar={person.avatar}
                   hidden={inPartyRoom}
                 >
-                  <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(person.avatar)?.svg ?? ""} />
+                  <span class="party-avatar-circle">
+                    <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(person.avatar)?.svg ?? ""} />
+                  </span>
+                  <span class="party-guest-name">you</span>
                 </span>
                 <div class="party-room-dropzone" id="party-room-dropzone">
                   <span class="party-room-empty" id="party-room-empty" hidden={initialPartyGuests.length > 0}>
@@ -1081,12 +1137,15 @@ const CATEGORY_LABEL: Record<string, string> = {
                   <div class="party-room-guests" id="party-room-guests">
                     {initialPartyGuests.map((g) => (
                       <span
-                        class="party-room-avatar"
+                        class="party-guest party-room-avatar"
                         data-person-id={g.personId}
                         data-own={g.personId === person.id ? "true" : undefined}
                         title={g.name}
                       >
-                        <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(g.avatar)?.svg ?? ""} />
+                        <span class="party-avatar-circle">
+                          <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(g.avatar)?.svg ?? ""} />
+                        </span>
+                        <span class="party-guest-name">{g.name}</span>
                       </span>
                     ))}
                   </div>
