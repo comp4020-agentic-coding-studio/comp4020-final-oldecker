@@ -329,3 +329,72 @@ crit 9 --- `party_expire` logs with `person: null`, same reasoning as
 `post_expire`: a timer firing isn't a person acting, and attributing it to
 whoever's row expired would misread, live in `flyctl logs`, as that person
 leaving on purpose.
+
+## The avatar stuck in the air: a live-update race in the drag code
+
+A user reported the party-room drag breaking mid-gesture: the cloned avatar
+that's supposed to follow the cursor would sometimes just stop, frozen in
+place over the page (in one screenshot, right on top of the panel's own
+heading), never reaching the room and never going away.
+
+The first theory, before any of this was reproduced, was that
+`finish()`'s unconditional `sourceEl.releasePointerCapture(pointerId)` was
+throwing: the Pointer Events spec has the UA release capture itself right
+before it fires `pointercancel`, so a `pointercancel`-bound handler calling
+`releasePointerCapture` again looked like it'd hit an already-released
+pointer and throw, aborting the function before `ghost.remove()` ever ran.
+That's a real DOMException in both engines tested (Chromium and WebKit throw
+`NotFoundError` for a pointer id that was never active at all) --- but it
+didn't hold up under an actual repro. Calling `releasePointerCapture` twice
+on a pointer id that *was* genuinely captured a moment ago is a silent
+no-op in Chromium, not a throw; nothing in this codebase's own flow ever
+calls it with a fabricated id. Worth writing down *because* it was wrong:
+a plausible spec-reading hypothesis still needs a real browser to check it
+against before it becomes a fix.
+
+**What the repro actually found:** this file's `startDrag()` attached
+`pointermove`/`pointerup`/`pointercancel` straight onto `sourceEl` --- the
+chip or in-room avatar actually being dragged. That's fine as long as
+`sourceEl` stays put for the gesture's duration, which it normally does.
+But the party room is live: `live.ts`'s `party_joined`/`party_left`
+listeners call `applyPartyJoin`/`applyPartyLeave` (`party-dom.ts`), which
+remove and re-insert a guest's element by `data-person-id` every time a
+join/leave/refresh broadcast arrives for them --- including a broadcast
+triggered from a *second open tab* belonging to the same person, or a
+retried `/api/party/join`, while the first tab is mid-drag on that exact
+avatar. The moment that happens, `sourceEl` is a detached node, and a
+detached node in both engines tested simply never receives another pointer
+event again --- not `pointermove`, not `pointerup`, and critically not
+`pointercancel` either. `finish()` never runs. The ghost (and the now-
+orphaned listeners still attached to the detached node) are never cleaned
+up, so the clone sits exactly where it last was told to move to, forever.
+That matches the report precisely: frozen mid-page, not following the
+cursor, no error in the console because nothing ever threw --- the handler
+that was supposed to run just never got the chance to.
+
+**The fix:** move the gesture's `pointermove`/`pointerup`/`pointercancel`
+listeners off `sourceEl` and onto `document`, filtering by `pointerId`
+instead of relying on being attached to the node the pointer happens to be
+captured by. `document` is never going anywhere mid-drag, so a live update
+swapping `sourceEl`'s node out from under the gesture can no longer sever
+the event stream that cleanup depends on. `setPointerCapture` still targets
+`sourceEl` (it has to --- that's what unifies mouse and touch here), but
+releasing it is now guarded with `sourceEl.isConnected &&
+sourceEl.hasPointerCapture(pointerId)` rather than a bare call, and all of
+`finish()`'s teardown (listener removal, the dropzone's hover class, the
+ghost) now lives in a `finally` block so no exception anywhere above it ---
+expected or not --- can skip cleanup again. Belt-and-braces on top of that:
+`startDrag()` now sweeps away any stray `.party-drag-ghost` before starting
+a new drag, so even an as-yet-undiscovered path to a leaked ghost can't
+compound into two.
+
+**How it was verified:** a disposable Playwright script (not committed ---
+this repo carries no Playwright dependency) joined a person, dragged their
+in-room avatar out, and while the drag was still in progress fired a second
+`/api/party/join` for that same person to trigger the exact live-update
+race above. Against the old code the ghost survived with no further
+cursor-tracking and no console error, matching the report; against the
+fixed code the ghost kept following the cursor through the mid-drag DOM
+replacement and was gone on mouseup. The two normal flows --- dropping
+inside the zone to join, dropping outside to no-op --- were re-checked the
+same way and are unaffected.

@@ -25,6 +25,12 @@ function pointInRect(x: number, y: number, rect: DOMRect): boolean {
 // OUTSIDE the zone counts) --- same gesture, opposite hit test and
 // opposite API route.
 function startDrag(sourceEl: HTMLElement, pointerId: number, direction: "in" | "out"): void {
+  // Belt-and-braces: if an earlier drag's ghost somehow survived (a bug we
+  // don't expect anymore, but also the exact symptom this function used to
+  // cause --- see the finish() comment below), don't let it pile up
+  // underneath a new one.
+  document.querySelectorAll(".party-drag-ghost").forEach((el) => el.remove());
+
   const ghost = sourceEl.cloneNode(true) as HTMLElement;
   ghost.classList.add("party-drag-ghost");
   ghost.removeAttribute("id");
@@ -45,16 +51,42 @@ function startDrag(sourceEl: HTMLElement, pointerId: number, direction: "in" | "
     return !!zone && pointInRect(x, y, zone);
   };
 
+  // Cleanup (ghost + listeners) must run no matter what: a party_joined/
+  // party_left broadcast arriving mid-drag (someone re-joining from another
+  // tab, a timer expiring your own slot, etc. --- see applyPartyJoin/
+  // applyPartyLeave in party-dom.ts) can replace sourceEl's node in the DOM
+  // out from under this gesture. That alone doesn't throw anything, but it
+  // used to matter a lot: this used to listen on sourceEl itself, and a
+  // detached element never receives another pointer event again --- not
+  // even pointercancel --- so finish() would simply never run and the ghost
+  // (plus its listeners) leaked forever, frozen wherever the pointer last
+  // was. That's the exact "avatar stuck in the air" bug this function once
+  // had. Listening on `document` instead means the gesture is tracked by
+  // pointerId regardless of what happens to sourceEl's node, and wrapping
+  // the teardown in try/finally means even an unexpected exception here
+  // (e.g. from a future change to this function) can't skip it either.
   const finish = async (e: PointerEvent) => {
-    sourceEl.releasePointerCapture(pointerId);
-    sourceEl.removeEventListener("pointermove", onMove);
-    sourceEl.removeEventListener("pointerup", finish);
-    sourceEl.removeEventListener("pointercancel", finish);
-    dropzoneEl?.classList.remove("drag-over");
+    if (e.pointerId !== pointerId) return;
+    try {
+      // sourceEl may already be detached (see above) or may simply never
+      // have had capture if the gesture was interrupted before it got the
+      // chance --- either way, hasPointerCapture is the correct check
+      // rather than trying/catching whatever releasePointerCapture throws.
+      if (sourceEl.isConnected && sourceEl.hasPointerCapture(pointerId)) {
+        sourceEl.releasePointerCapture(pointerId);
+      }
+    } finally {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", finish);
+      document.removeEventListener("pointercancel", finish);
+      dropzoneEl?.classList.remove("drag-over");
+      ghost.remove();
+    }
 
-    const over = isOverZone(e.clientX, e.clientY);
+    // pointercancel carries no meaningful position --- treat it as always a
+    // non-drop, the same as any other interrupted gesture.
+    const over = e.type === "pointercancel" ? false : isOverZone(e.clientX, e.clientY);
     const dropped = direction === "in" ? over : !over;
-    ghost.remove();
     if (!dropped) return;
 
     try {
@@ -76,15 +108,20 @@ function startDrag(sourceEl: HTMLElement, pointerId: number, direction: "in" | "
   };
 
   const onMove = (e: PointerEvent) => {
+    if (e.pointerId !== pointerId) return;
     moveGhost(e.clientX, e.clientY);
     const over = isOverZone(e.clientX, e.clientY);
     dropzoneEl?.classList.toggle("drag-over", direction === "in" && over);
   };
 
   sourceEl.setPointerCapture(pointerId);
-  sourceEl.addEventListener("pointermove", onMove);
-  sourceEl.addEventListener("pointerup", finish);
-  sourceEl.addEventListener("pointercancel", finish);
+  // Bound to `document`, not sourceEl --- see the comment in finish() for
+  // why: sourceEl can be replaced mid-gesture by a live party update, and a
+  // detached element stops receiving pointer events entirely, taking this
+  // whole gesture's cleanup down with it. document is never going anywhere.
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", finish);
+  document.addEventListener("pointercancel", finish);
 }
 
 youChip?.addEventListener("pointerdown", (e) => startDrag(youChip, e.pointerId, "in"));
