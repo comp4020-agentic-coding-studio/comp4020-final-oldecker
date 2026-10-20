@@ -205,15 +205,25 @@ logging it under the original author's name would make an automatic expiry
 read, live in `flyctl logs`, as that person deleting their own post, which
 isn't what happened), what, and a short free-text detail. `logAction` does
 exactly two things, both from the same fields: insert the row, then print
-one `console.log` line naming the person (not just their opaque id) so a
-crit presenter can narrate two people's actions apart by reading logs alone,
-the way the format asks for. It's wired into every mutating route: joining,
-posting, watering, renaming the plant, reacting, deleting, expiring, painting
-a pixel, and renaming the wall (below). Like `waterings`, it's append-only
-and unpruned
---- fine for ~15 people over one semester, worth naming rather than treating
-as free, same honesty as this file's "no Redis until more than one machine"
-line.
+one `console.log` line naming the person so a crit presenter can narrate two
+people's actions apart by reading logs alone, the way the format asks for.
+It's wired into every mutating route: joining, posting, watering, renaming
+the plant, reacting, deleting, expiring, painting a pixel, renaming the
+wall, and joining/leaving the party room (below). Like `waterings`, it's
+append-only and unpruned --- fine for ~15 people over one semester, worth
+naming rather than treating as free, same honesty as this file's "no Redis
+until more than one machine" line.
+
+**Correction, caught rehearsing the crit-10 narration:** the console line
+originally showed only a person's display name, on the reasoning that a
+name is more legible at a glance than an opaque id. That reasoning missed
+the actual spec: nothing stops two pod members typing the same name at
+`/api/join`, and crit 10's test is specifically "can the logs tell two
+browsers apart" --- a log line that can't distinguish a name collision fails
+the one job it exists to do. Fixed by appending each person's id prefix (the
+first 8 characters of their UUID) in parentheses after their name, so the
+line stays name-legible but is never actually ambiguous between two people:
+`person=Alice (3f9a21c4)`.
 
 ## The shared pixel canvas: last-write-wins, no locking, no history
 
