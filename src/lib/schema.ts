@@ -143,3 +143,24 @@ export const pixels = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.x, table.y] })],
 );
+
+// Who's currently in the shared party room, and until when --- personId
+// IS the primary key (not a surrogate), so re-joining while already in is
+// a plain upsert, which is exactly "re-adding refreshes your timer" rather
+// than a second row to dedupe. Persisted, not an in-memory Map like
+// events.ts's `present`: that Map is safe to lose on restart because its
+// fact ("this connection is open") is re-derived for free the moment a tab
+// reconnects, but "joined less than ~2h ago" outlives the SSE connection,
+// and fly.toml's auto_stop_machines/min_machines_running:0 means the
+// process restarts specifically during the idle gaps between visits ---
+// exactly when no open tab would be there to silently repair an in-memory
+// wipe. See src/lib/party.ts.
+export const partyGuests = sqliteTable("party_guests", {
+  personId: text("person_id")
+    .primaryKey()
+    .references(() => people.id),
+  joinedAt: integer("joined_at")
+    .notNull()
+    .default(sql`(unixepoch())`),
+  expiresAt: integer("expires_at").notNull(),
+});

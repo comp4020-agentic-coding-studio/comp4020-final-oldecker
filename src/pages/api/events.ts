@@ -1,11 +1,12 @@
-// The live channel: presence (who's here) and plant waterings, pushed over
-// Server-Sent Events --- one-directional, server-to-client, which is all
-// this app needs (every write still goes through its own POST route).
-// Posts and votes are deliberately NOT on this channel yet; see PROCESS.md
-// for why that's a decision and not an oversight.
+// The live channel: presence (who's here), plant waterings, and the party
+// room, pushed over Server-Sent Events --- one-directional, server-to-
+// client, which is all this app needs (every write still goes through its
+// own POST route). Posts and votes are deliberately NOT on this channel
+// yet; see PROCESS.md for why that's a decision and not an oversight.
 import type { APIRoute } from "astro";
 import { currentPerson } from "../../lib/identity";
 import { markAbsent, markPresent, presenceSnapshot, subscribe, type LiveEvent } from "../../lib/events";
+import { partyRoomSnapshot } from "../../lib/party";
 
 export const prerender = false;
 
@@ -32,6 +33,10 @@ export const GET: APIRoute = ({ cookies }) => {
       markPresent(person.id, person.name, person.avatar);
       unsubscribe = subscribe(send);
       send({ type: "presence", data: { here: presenceSnapshot() } });
+      // Same reasoning as the presence snapshot above --- a fresh
+      // connection shouldn't wait on the next party_joined/party_left
+      // broadcast to find out who's already in the room.
+      send({ type: "party_snapshot", data: { guests: partyRoomSnapshot() } });
 
       heartbeat = setInterval(() => controller.enqueue(encoder.encode(": keep-alive\n\n")), HEARTBEAT_MS);
     },

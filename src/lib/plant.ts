@@ -1,14 +1,17 @@
-// The plant's health is computed at read time from who's watered it in the
-// last 7 days --- no counter to keep in sync, no cron to decay it. A quiet
-// week shows up as a thirstier plant the next time anyone looks, which is
-// the whole mechanic: it dries out if fewer than THRESHOLD distinct people
-// open the site and water it in a week.
+// The plant's health is computed at read time from who's watered it since
+// the week's fixed start --- no counter to keep in sync, no cron to decay
+// it. A quiet week shows up as a thirstier plant the next time anyone
+// looks, which is the whole mechanic: it dries out if fewer than THRESHOLD
+// distinct people open the site and water it in a week. "The week" is a
+// fixed calendar week (Monday 00:00, Australia/Canberra), not a rolling
+// lookback --- see mostRecentCanberraMonday() in week.ts, and PROCESS.md
+// for why that changed from this file's original rolling-7-day version.
 import { eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { plant, waterings } from "./schema";
+import { mostRecentCanberraMonday } from "./week";
 
 export const WEEKLY_THRESHOLD = 5;
-const WEEK_SECONDS = 60 * 60 * 24 * 7;
 const PLANT_ID = 1; // one shared plant, one row
 const DEFAULT_NAME = "the plant";
 export const MAX_NAME_LENGTH = 30;
@@ -24,7 +27,7 @@ export interface PlantHealth {
 }
 
 export function plantHealth(): PlantHealth {
-  const since = Math.floor(Date.now() / 1000) - WEEK_SECONDS;
+  const since = mostRecentCanberraMonday();
   const row = db
     .select({ count: sql<number>`count(distinct ${waterings.personId})` })
     .from(waterings)

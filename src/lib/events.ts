@@ -9,7 +9,17 @@ export type LiveEvent =
   | { type: "renamed"; data: { name: string } }
   | { type: "presence"; data: { here: Array<{ name: string; avatar: string }> } }
   | { type: "pixel"; data: { x: number; y: number; colorIndex: number } }
-  | { type: "canvas_renamed"; data: { name: string } };
+  | { type: "canvas_renamed"; data: { name: string } }
+  // party_joined covers both joining and re-joining-to-refresh (the client
+  // upserts by personId either way); party_left covers both a manual leave
+  // and an expiry, same as markAbsent not distinguishing a closed tab from
+  // navigating away --- see src/lib/party.ts.
+  | { type: "party_joined"; data: { personId: string; name: string; avatar: string; expiresAt: number } }
+  | { type: "party_left"; data: { personId: string } }
+  | {
+      type: "party_snapshot";
+      data: { guests: Array<{ personId: string; name: string; avatar: string; expiresAt: number }> };
+    };
 
 const bus = new EventEmitter();
 bus.setMaxListeners(0); // one listener per open browser tab; no fixed ceiling

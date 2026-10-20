@@ -1,11 +1,13 @@
-// The live channel: presence, the plant, and the pixel canvas update without
-// a reload, for every open tab --- posts and votes still wait for one (see
-// PROCESS.md for why that line is drawn where it is). One EventSource per
-// tab; the server side of this is src/pages/api/events.ts.
+// The live channel: presence, the plant, the pixel canvas, and the party
+// room update without a reload, for every open tab --- posts and votes
+// still wait for one (see PROCESS.md for why that line is drawn where it
+// is). One EventSource per tab; the server side of this is
+// src/pages/api/events.ts.
 import type { PlantStage } from "../lib/plant-art";
 import { avatarById } from "../lib/avatars";
 import { PALETTE } from "../lib/canvas";
 import { applyCanvasName } from "./canvas-dom";
+import { applyPartyJoin, applyPartyLeave, renderPartyRoom, type PartyGuest } from "./party-dom";
 import { applyPlantHealth, applyPlantName } from "./plant-dom";
 import { pourIntoPlant } from "./water-pour";
 
@@ -21,6 +23,11 @@ interface PixelEvent {
   y: number;
   colorIndex: number;
 }
+interface PartySnapshotEvent {
+  guests: PartyGuest[];
+}
+
+const ownPersonId = document.querySelector<HTMLElement>("#party-you")?.dataset.personId ?? "";
 
 const presenceEl = document.querySelector<HTMLElement>("#presence");
 
@@ -64,6 +71,18 @@ source.addEventListener("pixel", (e) => {
 
 source.addEventListener("canvas_renamed", (e) => {
   applyCanvasName((JSON.parse((e as MessageEvent).data) as { name: string }).name);
+});
+
+source.addEventListener("party_joined", (e) => {
+  applyPartyJoin(JSON.parse((e as MessageEvent).data) as PartyGuest, ownPersonId);
+});
+
+source.addEventListener("party_left", (e) => {
+  applyPartyLeave((JSON.parse((e as MessageEvent).data) as { personId: string }).personId, ownPersonId);
+});
+
+source.addEventListener("party_snapshot", (e) => {
+  renderPartyRoom((JSON.parse((e as MessageEvent).data) as PartySnapshotEvent).guests, ownPersonId);
 });
 
 // A dropped connection (a laptop sleeping, a flaky network) shouldn't need

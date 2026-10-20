@@ -237,3 +237,85 @@ a silently vanished vote --- "oh, they changed it back" is a visible moment,
 not invisible data loss. Adding versioning or a contested-cell indicator
 would be solving a problem this app's scale doesn't actually have, the same
 unreasoned-default trap the streaks section above argues against.
+
+## The plant's watering counter now resets on a fixed week, not a rolling one
+
+`plantHealth()` originally counted distinct waterers in the last 7 days from
+whenever anyone happened to load the page --- a rolling lookback, so "this
+week" never actually reset at a shared instant; it just faded, one watering
+at a time, as each individual tap aged past 7 days old. That's a different
+thing from what "resets weekly" means to a person, so the cutoff is now a
+fixed calendar week: the most recent Monday 00:00, Australia/Canberra
+(`mostRecentCanberraMonday()` in `src/lib/week.ts`). The count now visibly
+drops to 0 the instant a new week starts for everyone at once, not
+gradually as old waterings roll out of a trailing window.
+
+Worth a note specifically because Fly's machine runs UTC (nothing in this
+repo sets `TZ`), so the naive version of this --- `new Date().getDay()` ---
+would be computing "Monday" in the wrong timezone entirely. Canberra's
+AEST/AEDT split is a real ~half-the-year effect, not a rare edge case, so it
+gets handled rather than ignored: `Intl.DateTimeFormat` already carries
+Node's built-in DST table, so no date library was needed, just reading the
+weekday/hour it reports for Canberra specifically. The one corner left
+imprecise on purpose: on the two days a year the clock actually changes,
+the cutoff can land up to an hour off local midnight (a 23h or 25h-long
+local day) --- not worth a bisection search for sub-hour precision on two
+days a year, in an app for ~15 people.
+
+## The party room: this week's access-control decision
+
+Crit 10 asks for a decision about who can see and change what, checked on
+the server and written down. The real gap it landed on: dragging your own
+avatar into a shared party room to say "free to hang out for a couple of
+hours" is a genuine mutation on shared state (`party_guests`, one row per
+person currently in the room), and the only thing worth checking is that
+you can only ever add or remove *your own* avatar, never anyone else's.
+
+**What's checked, and where:** `src/pages/api/party/join.ts` and
+`.../leave.ts` both start the same way every mutating route here does ---
+`currentPerson(cookies)`, 401 if there's no one --- and then act exclusively
+on `person.id`. There's no id in either request to compare against at all,
+unlike post delete's `post.authorId !== person.id` check: the row acted on
+*is* the caller's own by construction, so there's nothing to spoof and
+nothing further to validate. That's a simpler shape than the delete route's,
+not a weaker one --- the access control is in what the route is capable of
+asking for, not in an extra comparison.
+
+**Re-joining while already in the room is a plain upsert**
+(`party_guests.personId` is the real primary key, not a surrogate), which is
+what makes "drag yourself in again to refresh your timer" free: the server
+doesn't need to distinguish "joining" from "extending" as separate actions,
+because they're the same write.
+
+**Where membership lives, and why that matters here specifically:** the
+room's guest list is a SQLite table, not an in-memory `Map` the way presence
+is (`src/lib/events.ts`'s `present`). Presence can live in memory because
+its fact --- "this connection is open" --- is re-derived for free the
+instant a tab reconnects; losing it on a restart is correct, not lossy. Party
+membership encodes something that outlives any one connection ("joined less
+than ~2 hours ago"), and `fly.toml` scales this app's one machine to zero
+between visits, which means it restarts specifically during the idle gaps
+when nobody's open tab would be there to silently repair an in-memory wipe.
+So: persisted, *because of* that scale-to-zero behaviour, not despite it.
+
+**Expiry is sweep-at-read, like the 60-day post expiry, plus one thing posts
+don't need:** a live broadcast the moment someone's time actually runs out.
+`sweepExpiredPartyGuests()` (`src/lib/party.ts`) is called once per request
+from `index.astro`, same "derive fresh, no cron" shape as
+`sweepExpiredPosts()` --- a fresh page load is never wrong. But the room is
+live in a way posts deliberately aren't (crit 9's own bar for what belongs
+on the SSE channel: "a presence list that's stale... is just a guestbook"),
+so a pure sweep-at-read would let the room look occupied to everyone already
+connected until someone happens to reload. The fix is a `setTimeout`
+scheduled per join, firing at `expiresAt`, that re-checks and broadcasts.
+If the machine restarts, the in-flight timer is lost along with everything
+else in memory, but the next request's sweep and the next SSE connection's
+`party_snapshot` catch it up --- the same self-healing-on-reconnect idiom
+this app already leans on for presence.
+
+**Logging:** every join, leave, and expiry calls `logAction` under
+`party_join`/`party_leave`/`party_expire`, the same audit trail built for
+crit 9 --- `party_expire` logs with `person: null`, same reasoning as
+`post_expire`: a timer firing isn't a person acting, and attributing it to
+whoever's row expired would misread, live in `flyctl logs`, as that person
+leaving on purpose.

@@ -6,6 +6,7 @@ import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../lib/canvas-meta";
 import { db } from "../lib/db";
 import { presenceSnapshot } from "../lib/events";
 import { currentPerson } from "../lib/identity";
+import { partyRoomSnapshot, sweepExpiredPartyGuests } from "../lib/party";
 import { MAX_NAME_LENGTH, plantHealth, plantName } from "../lib/plant";
 import { plantSvgForStage } from "../lib/plant-art";
 import { sweepExpiredPosts } from "../lib/posts";
@@ -19,6 +20,9 @@ const sort = Astro.url.searchParams.get("sort") === "extreme" ? "extreme" : "new
 // counter, nothing to keep in sync. The common case (nothing's expired) is
 // one cheap, empty-result SELECT; see src/lib/posts.ts.
 if (person) sweepExpiredPosts();
+// Catches anything a restart's lost party-room timers missed --- see
+// src/lib/party.ts.
+if (person) sweepExpiredPartyGuests();
 
 const feed = person
   ? db
@@ -116,6 +120,8 @@ const plantDisplayName = person ? plantName() : null;
 // client's SSE connection to populate it --- so a reload shows who's here
 // immediately, same as the live updates do afterwards.
 const initialPresence = person ? presenceSnapshot() : [];
+const initialPartyGuests = person ? partyRoomSnapshot() : [];
+const inPartyRoom = person ? initialPartyGuests.some((g) => g.personId === person.id) : false;
 
 // The canvas's current state: one row per painted cell (unpainted cells just
 // aren't in the table --- see schema.ts), at most CANVAS_SIZE², trivial to
@@ -206,6 +212,7 @@ const CATEGORY_LABEL: Record<string, string> = {
       }
       .plant-widget,
       .canvas-widget,
+      .party-widget,
       #compose-form,
       .sort-toggle {
         max-width: 640px;
@@ -553,6 +560,110 @@ const CATEGORY_LABEL: Record<string, string> = {
         opacity: 0.7;
       }
 
+      /* --- the party room -------------------------------------------------
+         Drag your own avatar from #party-you into the dropzone to signal
+         you're free to hang out; drag an in-room avatar back out to leave
+         early (src/scripts/party-drag.ts). Same bordered-card recipe as
+         .plant-widget/.canvas-widget above. */
+      .party-widget {
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+        margin-bottom: 1.5rem;
+      }
+      .party-widget h2 {
+        margin: 0 0 0.3rem;
+        font-size: 1rem;
+      }
+      .party-hint {
+        margin: 0 0 0.8rem;
+        font-size: 0.8rem;
+        opacity: 0.6;
+      }
+      .party-row {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+      }
+      /* flex children default to min-width:auto, which can floor them at
+         their own content's width --- same mobile-overflow trap already hit
+         once this session with the compose form's fields --- so the
+         dropzone (the one child whose content can actually grow, as more
+         guests join) gets an explicit 0 floor instead. */
+      .party-room-dropzone {
+        flex: 1;
+        min-width: 0;
+        min-height: 3.2rem;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        padding: 0.5rem;
+        border: 1px dashed var(--border);
+        border-radius: 0.75rem;
+      }
+      .party-room-dropzone.drag-over {
+        border-color: var(--ink);
+        background: var(--bg);
+      }
+      .party-room-guests {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+      .party-room-empty {
+        font-size: 0.8rem;
+        opacity: 0.5;
+      }
+      /* :global() on .party-room-avatar and .party-drag-ghost specifically:
+         Astro's scoped CSS only attaches its scoping attribute to elements
+         it renders server-side --- an element created client-side via
+         document.createElement (party-dom.ts's guestEl(), and the drag
+         ghost) never gets that attribute, so an ordinary scoped rule
+         silently never matches it (renders at its default 0-width inline
+         size). .party-you-chip doesn't need this: it's always SSR-rendered,
+         only ever shown/hidden, never created in JS. */
+      .party-you-chip,
+      :global(.party-room-avatar) {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex: none;
+        cursor: grab;
+        /* a touch-drag must not also scroll the page --- same mechanism
+           #pixel-canvas already needs for its own pointer gestures. */
+        touch-action: none;
+      }
+      .party-you-chip svg,
+      :global(.party-room-avatar svg) {
+        width: 100%;
+        height: 100%;
+      }
+      .party-you-chip[hidden] {
+        display: none;
+      }
+      /* the dragged copy that actually follows the pointer --- the source
+         avatar never moves itself, so a failed drop has nothing to snap
+         back from (see party-drag.ts). Always created client-side, so
+         :global() for the same reason as .party-room-avatar above. */
+      :global(.party-drag-ghost) {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 2rem;
+        height: 2rem;
+        pointer-events: none;
+        z-index: 1000;
+        opacity: 0.85;
+      }
+
       /* --- composer ---------------------------------------------------- */
       #compose-form {
         display: grid;
@@ -867,7 +978,14 @@ const CATEGORY_LABEL: Record<string, string> = {
         margin-bottom: 1rem;
         min-height: 1.8rem;
       }
-      .presence-avatar {
+      /* :global(): live.ts's renderPresence() rebuilds this strip's
+         children client-side via innerHTML on every presence broadcast ---
+         those elements never get Astro's scoped data-astro-cid attribute,
+         so a plain scoped rule silently stops matching them the moment
+         anyone else joins or leaves (pre-existing since crit 9; caught
+         while building the party room's own avatars hit the identical
+         bug). Same rule either way, just not scoped to SSR-only elements. */
+      :global(.presence-avatar) {
         width: 1.8rem;
         height: 1.8rem;
         border-radius: 50%;
@@ -878,11 +996,13 @@ const CATEGORY_LABEL: Record<string, string> = {
         justify-content: center;
         overflow: hidden;
       }
-      .presence-avatar svg {
+      :global(.presence-avatar svg) {
         width: 100%;
         height: 100%;
       }
-      .presence-empty {
+      /* also rebuilt client-side by live.ts's renderPresence() --- same
+         :global() reasoning as .presence-avatar above. */
+      :global(.presence-empty) {
         font-size: 0.8rem;
         opacity: 0.5;
       }
@@ -922,6 +1042,41 @@ const CATEGORY_LABEL: Record<string, string> = {
                   );
                 })
               )}
+            </div>
+
+            <div class="party-widget">
+              <h2>the party room</h2>
+              <p class="party-hint">drag your avatar in to say you're free to hang out for a couple of hours</p>
+              <div class="party-row">
+                <span
+                  id="party-you"
+                  class="party-you-chip"
+                  title="drag me into the room"
+                  data-person-id={person.id}
+                  data-name={person.name}
+                  data-avatar={person.avatar}
+                  hidden={inPartyRoom}
+                >
+                  <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(person.avatar)?.svg ?? ""} />
+                </span>
+                <div class="party-room-dropzone" id="party-room-dropzone">
+                  <span class="party-room-empty" id="party-room-empty" hidden={initialPartyGuests.length > 0}>
+                    no one's in the room yet
+                  </span>
+                  <div class="party-room-guests" id="party-room-guests">
+                    {initialPartyGuests.map((g) => (
+                      <span
+                        class="party-room-avatar"
+                        data-person-id={g.personId}
+                        data-own={g.personId === person.id ? "true" : undefined}
+                        title={g.name}
+                      >
+                        <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(g.avatar)?.svg ?? ""} />
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="plant-widget">
@@ -1129,6 +1284,7 @@ const CATEGORY_LABEL: Record<string, string> = {
         <script src="../scripts/temperature-slider.ts" />
         <script src="../scripts/delete-post.ts" />
         <script src="../scripts/pixel-canvas.ts" />
+        <script src="../scripts/party-drag.ts" />
         <script src="../scripts/live.ts" />
       </>
     )}
