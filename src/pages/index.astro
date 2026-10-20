@@ -219,12 +219,25 @@ const CATEGORY_LABEL: Record<string, string> = {
         margin-left: auto;
         margin-right: auto;
       }
-      /* Pinterest-ish: as many ~380px columns as fit, falling back to one
-         on a narrow screen --- CSS columns, not JS, so a card can land in
-         whichever column is shortest without any layout math here. */
+      /* Grid, not CSS multi-column: `columns` lays items out column-major
+         (fills column 1 top-to-bottom, then column 2), so reading left to
+         right across a row jumps 1-then-4, 2-then-5 --- newest-first sorting
+         then reads like 14/25/36 instead of the newest posts actually
+         sitting together as 12/34/56. Grid is row-major by default, so
+         posts read in the order they were written, left to right then down
+         --- the trade-off is a shared row height per row (the tallest card
+         in a row sets it) rather than true masonry packing into whichever
+         column is shortest.
+         min(380px, 100%), not a bare 380px: minmax()'s minimum is a hard
+         floor even when the container is narrower than it --- on a ~358px-
+         wide phone viewport a bare 380px floor forces a column wider than
+         the screen (the same mobile-overflow family of bug already hit
+         once this session with the compose form's fields), instead of
+         actually falling back to one column. */
       .feed {
-        columns: 2 380px;
-        column-gap: 1rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr));
+        gap: 1rem;
       }
 
       /* --- the plant ------------------------------------------------- */
@@ -722,8 +735,10 @@ const CATEGORY_LABEL: Record<string, string> = {
         border-left-width: 4px;
         border-radius: 1rem;
         background: var(--card);
-        margin-bottom: 1rem;
-        break-inside: avoid; /* so a card never gets split across two columns */
+        /* no margin-bottom here: .feed's own `gap` already separates every
+           row --- including the single-column case, where each post is
+           still its own grid row --- so a margin on top of that would
+           double the space between posts. */
       }
       /* the whole bubble, not just the tag --- same hues as .category-tag,
          just a much lighter wash so the tag's own pill still reads darker
