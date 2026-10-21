@@ -9,11 +9,24 @@
 // lets a member subscribe --- so no house's live state leaks into another's
 // open tabs (spec/houses.test.ts checks exactly that).
 import { EventEmitter } from "node:events";
+import { levelsFor } from "./activity";
 
+// `level` is the person's (public) activity level, worked out fresh each
+// time a snapshot is taken --- one grouped query for everyone in it, see
+// levelsFor() --- so a corridor redraw always shows current badges.
 export interface PresenceEntry {
   personId: string;
   name: string;
   avatar: string;
+  level: number;
+}
+
+export interface PartyGuestEntry {
+  personId: string;
+  name: string;
+  avatar: string;
+  expiresAt: number;
+  level: number;
 }
 
 export type LiveEvent =
@@ -26,12 +39,14 @@ export type LiveEvent =
   // upserts by personId either way); party_left covers both a manual leave
   // and an expiry, same as markAbsent not distinguishing a closed tab from
   // navigating away --- see src/lib/party.ts.
-  | { type: "party_joined"; data: { personId: string; name: string; avatar: string; expiresAt: number } }
+  | { type: "party_joined"; data: PartyGuestEntry }
   | { type: "party_left"; data: { personId: string } }
-  | {
-      type: "party_snapshot";
-      data: { guests: Array<{ personId: string; name: string; avatar: string; expiresAt: number }> };
-    };
+  | { type: "party_snapshot"; data: { guests: PartyGuestEntry[] } }
+  // Someone in this house earned points: their badge, ring and leaderboard
+  // row change live for everyone with the house open (and their own tab
+  // uses it for the progress bar and the level-up toast). Sent by
+  // logAction() --- see src/lib/audit.ts.
+  | { type: "level"; data: { personId: string; level: number; points: number } };
 
 const bus = new EventEmitter();
 bus.setMaxListeners(0); // one listener per open browser tab; no fixed ceiling
@@ -60,10 +75,13 @@ interface Present {
 const present = new Map<number, Map<string, Present>>();
 
 export function presenceSnapshot(houseId: number): PresenceEntry[] {
-  return [...(present.get(houseId)?.entries() ?? [])].map(([personId, { name, avatar }]) => ({
+  const entries = [...(present.get(houseId)?.entries() ?? [])];
+  const levels = levelsFor(entries.map(([personId]) => personId));
+  return entries.map(([personId, { name, avatar }]) => ({
     personId,
     name,
     avatar,
+    level: levels.get(personId)?.level ?? 1,
   }));
 }
 

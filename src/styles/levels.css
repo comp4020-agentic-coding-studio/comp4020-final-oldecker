@@ -1,0 +1,390 @@
+/* Activity levels, shown to everyone in a house (PROCESS.md, "Activity levels
+   go public"). A global stylesheet, imported from the house page's
+   frontmatter, rather than scoped <style>: the badge is built client-side
+   too (flairHtml() in src/lib/levels.ts, used by party-dom.ts), and Astro's
+   scoped CSS never reaches elements made by innerHTML. Everything is
+   namespaced .lvl-* / .lb-* so nothing here can catch another component.
+
+   The flair: wrap any round avatar element in
+     <span class="lvl-flair" data-level="N"> avatar <span class="lvl-badge">N</span></span>
+   (LevelFlair.astro on the server, flairHtml() in the browser). The ring is
+   the avatar's own border, recoloured; the badge sits on its lower right. */
+
+.lvl-flair {
+  --lvl-c: var(--lvl-1);
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  border-radius: 50%;
+}
+.lvl-flair[data-level="2"] {
+  --lvl-c: var(--lvl-2);
+}
+.lvl-flair[data-level="3"] {
+  --lvl-c: var(--lvl-3);
+}
+.lvl-flair[data-level="4"] {
+  --lvl-c: var(--lvl-4);
+}
+.lvl-flair[data-level="5"] {
+  --lvl-c: var(--lvl-5);
+}
+
+/* The ring. !important on purpose: the ring IS the information, so it has
+   to win over whichever avatar class it wraps (the corridor's amber party
+   border, the "you" chip's ink border, a hover recolour, and whatever the
+   bedroom's chips use) without this file knowing their selectors. Only the
+   colour and width are forced; size, shadow and hover lift are untouched. */
+.lvl-flair > :first-child {
+  border-style: solid !important;
+  border-color: var(--lvl-c) !important;
+  border-width: 2px !important;
+}
+.lvl-flair[data-level="3"] > :first-child,
+.lvl-flair[data-level="4"] > :first-child {
+  border-width: 2.5px !important;
+}
+/* gold gets a soft halo */
+.lvl-flair[data-level="4"] {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lvl-4) 35%, transparent);
+}
+/* level 5: a two-colour ring that slowly turns, with a card-coloured gap
+   between it and the face (the avatar's own border goes transparent and
+   shows its card background through). */
+.lvl-flair[data-level="5"] {
+  padding: 2px;
+  background: conic-gradient(from var(--lvl-spin, 0deg), var(--lvl-5), var(--lvl-5b), var(--lvl-5));
+  animation: lvl-spin 6s linear infinite;
+}
+.lvl-flair[data-level="5"] > :first-child {
+  border-color: var(--card) !important;
+}
+@property --lvl-spin {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes lvl-spin {
+  to {
+    --lvl-spin: 360deg;
+  }
+}
+
+.lvl-badge {
+  position: absolute;
+  right: -0.3rem;
+  bottom: -0.2rem;
+  z-index: 1;
+  min-width: 0.95rem;
+  height: 0.95rem;
+  padding: 0 0.2rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--card);
+  background: var(--lvl-c);
+  color: var(--lvl-badge-ink);
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: calc(0.95rem - 3px);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.lvl-flair[data-level="5"] .lvl-badge {
+  background: linear-gradient(135deg, var(--lvl-5), var(--lvl-5b));
+}
+
+/* the moment someone's level goes up (anyone's, seen live): a little pop */
+.lvl-flair.lvl-bump {
+  animation: lvl-bump 0.7s ease;
+}
+.lvl-flair[data-level="5"].lvl-bump {
+  animation:
+    lvl-bump 0.7s ease,
+    lvl-spin 6s linear infinite;
+}
+@keyframes lvl-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.25);
+  }
+  65% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* --- your own progress, under the wall ----------------------------------- */
+.lvl-progress {
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.8rem;
+}
+.lvl-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.lvl-progress-head strong {
+  font-size: 0.85rem;
+}
+.lvl-progress-head span {
+  color: var(--text-muted);
+}
+.lvl-bar {
+  position: relative;
+  height: 0.55rem;
+  margin: 0.35rem 0 0.45rem;
+  border-radius: 999px;
+  background: var(--lvl-track);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.lvl-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: var(--lvl-c, var(--lvl-1));
+  transition: width 0.6s ease;
+}
+.lvl-progress[data-level="2"] {
+  --lvl-c: var(--lvl-2);
+}
+.lvl-progress[data-level="3"] {
+  --lvl-c: var(--lvl-3);
+}
+.lvl-progress[data-level="4"] {
+  --lvl-c: var(--lvl-4);
+}
+.lvl-progress[data-level="5"] {
+  --lvl-c: var(--lvl-5);
+}
+.lvl-progress[data-level="5"] .lvl-bar-fill {
+  background: linear-gradient(90deg, var(--lvl-5), var(--lvl-5b));
+}
+.lvl-hints {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.lvl-hints li {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  white-space: nowrap;
+}
+.lvl-hints li b {
+  font-weight: 700;
+}
+.lvl-hints li.done {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+.lvl-hint-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* --- the level-up toast ---------------------------------------------------- */
+.lvl-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.2rem;
+  z-index: 2000;
+  max-width: calc(100vw - 2rem);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem 0.6rem 0.7rem;
+  border-radius: 1rem;
+  border: 2px solid var(--lvl-c, var(--lvl-1));
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 0.6rem 1.6rem #0003;
+  transform: translate(-50%, 0);
+  animation: lvl-toast-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.lvl-toast[data-level="2"] {
+  --lvl-c: var(--lvl-2);
+}
+.lvl-toast[data-level="3"] {
+  --lvl-c: var(--lvl-3);
+}
+.lvl-toast[data-level="4"] {
+  --lvl-c: var(--lvl-4);
+}
+.lvl-toast[data-level="5"] {
+  --lvl-c: var(--lvl-5);
+}
+.lvl-toast.leaving {
+  opacity: 0;
+  transform: translate(-50%, 1rem);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.lvl-toast-medal {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  background: var(--lvl-c);
+  color: var(--lvl-badge-ink);
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+.lvl-toast[data-level="5"] .lvl-toast-medal {
+  background: linear-gradient(135deg, var(--lvl-5), var(--lvl-5b));
+}
+.lvl-toast-text strong {
+  display: block;
+  font-size: 0.95rem;
+}
+.lvl-toast-text span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+@keyframes lvl-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 1.5rem) scale(0.9);
+  }
+}
+/* confetti: a handful of little pieces thrown up from the toast */
+.lvl-confetti {
+  position: absolute;
+  left: 1.8rem;
+  top: 0.4rem;
+  width: 0.4rem;
+  height: 0.55rem;
+  border-radius: 1px;
+  pointer-events: none;
+  opacity: 0;
+  animation: lvl-confetti 1.1s ease-out forwards;
+  animation-delay: calc(var(--i) * 0.03s);
+}
+@keyframes lvl-confetti {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot));
+  }
+}
+
+/* --- the leaderboard, below the feed -------------------------------------- */
+.lb {
+  max-width: 640px;
+  margin: 2.5rem auto 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+}
+.lb h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.lb-hint {
+  margin: 0.1rem 0 0.7rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.lb-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+.lb-row {
+  display: grid;
+  grid-template-columns: 1.4rem auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.7rem;
+}
+.lb-row.lb-you {
+  background: var(--party-glow);
+  outline: 1px solid var(--border);
+}
+.lb-rank {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.lb-avatar {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: var(--card);
+  border: 2px solid var(--border);
+  display: inline-flex;
+  overflow: hidden;
+}
+.lb-avatar svg {
+  width: 100%;
+  height: 100%;
+}
+.lb-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+.lb-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lb-you-tag {
+  flex: none;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.lb-score {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.lb-score b {
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lvl-flair[data-level="5"],
+  .lvl-flair.lvl-bump,
+  .lvl-flair[data-level="5"].lvl-bump,
+  .lvl-toast,
+  .lvl-confetti {
+    animation: none;
+  }
+  .lvl-confetti {
+    display: none;
+  }
+}

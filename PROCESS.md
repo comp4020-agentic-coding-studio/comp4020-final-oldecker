@@ -462,6 +462,109 @@ placement is itself activity, the success response is computed after the
 row is written, so the placement that tips you into a new level starts its
 countdown at the new, shorter cooldown.
 
+*(Superseded in part: the level is now public, and the cooldowns are much
+longer. See "Activity levels go public" below. The formula and the
+anti-farming reasoning here still hold.)*
+
+## Activity levels go public, and the wall slows down
+
+The user changed their mind about the privacy call above. Levels are now
+visible to everyone in a house: a small numbered badge on each person's
+avatar in the corridor and the party room, a ring around the avatar that
+goes plain, bronze, silver, gold and then a slowly turning magenta-violet
+ring at level 5, and a short "who's been around" leaderboard under the feed.
+I argued for privacy before, so this is the reasoning for undoing it rather
+than a silent reversal.
+
+**Why it's fine now.** The worry was a public number that points at whoever
+has been quiet. Two things are different. First, the group asked for it: it
+is fifteen friends who want to see each other turning up, and a badge is
+closer to "Ada's been around a lot this week" than to a score. Second, the
+formula was already built so the number can't really be competed over. Each
+kind of action counts once per UTC day, over a rolling 7 days, so you can't
+grind it in an evening, and it decays without anyone doing anything. Being
+at level 1 just means "not much this week", which tells your friends nothing
+the empty corridor didn't already. What I kept from the old reasoning: no
+history, no all-time totals, no "you dropped a level" message. The
+leaderboard sits at the very bottom of the page and only lists *this*
+house's members, and ties share a rank, so a quiet week puts you at the
+bottom of a short list rather than in a public ranking.
+
+**The new curve: 10 min, 5 min, 2 min, 1 min, 30 s.** The old 30s-to-10s
+range made the cooldown barely noticeable, so the level didn't matter much.
+Stretching the base to ten minutes makes each pixel a small decision, and a
+twenty-fold spread between level 1 and level 5 gives the badge a real perk
+behind it. The point thresholds (0/4/10/18/28) and the weights are
+unchanged, and pixels still cap at level 2 on their own (5 minutes), so the
+wall still can't be levelled up by painting the wall. With waits that are
+minutes long, the countdown now reads "4m 32s" rather than "272s".
+
+**How it's computed for a whole house.** `levelsFor(ids)` in
+`src/lib/activity.ts` is one grouped query over `audit_log` (by person and
+action, counting distinct days) for any number of people, covered by the
+existing `(person_id, action, created_at)` index. The house page calls it
+once, through `houseLeaderboard()`, for every member, and the presence and
+party snapshots call it once for everyone they list, so ~15 badges cost
+one query, not fifteen. Still no schema change: the level is still derived
+at read time and stored nowhere. The curve, the weights and the wording
+moved into `src/lib/levels.ts`, which has no server imports, so the browser
+formats the countdown and draws badges with the same numbers the server
+enforces.
+
+**Live updates.** A level can only change when an `audit_log` row is
+written, and every row goes through `logAction()`. So that is where it is
+detected: for the five weighted actions it reads your points before and
+after the insert, and if they changed it broadcasts a small `level` event
+(`personId`, `level`, `points`) to every house you belong to, since your
+badge is on all of them. Most actions don't change anything (it's the
+second watering of the day, say), and then nothing is sent. Presence and
+party payloads also carry each person's level, so a chip rebuilt for any
+other reason is never stale. On the page, `src/scripts/level-dom.ts` updates
+every `.lvl-flair` inside any element with that person's `data-person-id`,
+re-sorts the leaderboard, and gives the badge a little pop when it goes up.
+
+**Your own level** gets a progress bar under the wall: points, how many more
+to the next level, and chips for what earns points ("post +4", "water the
+plant +3", ...). A chip greys out with "✓ today" once that action has
+already scored today, because the once-per-day rule would otherwise make the
+hints a lie: a second post is worth nothing. (`GET /api/level` refreshes
+them after you earn something.) When your level goes up you get a toast with
+a bit of confetti, whether it happens live (a `level` event about you, or a
+pixel's response) or while you were away. The last level you saw is kept in
+`localStorage`, wrapped in try/catch, so a level-up that happened on your
+phone is celebrated on the laptop next time. A private window just skips the
+"while you were away" part. A level-up mid-wait also shortens the countdown
+you're already in, because the server measures the new cooldown from your
+last placement.
+
+**The badge is reusable.** `LevelFlair.astro` (server) and `flairHtml()`
+(browser) produce the same markup, a `.lvl-flair` wrapper around any round
+avatar element plus a `.lvl-badge`, styled by the global
+`src/styles/levels.css`. The ring overrides the wrapped avatar's border
+colour with `!important` on purpose: the ring *is* the information, so it
+has to win over whatever border the chip already has without this file
+knowing that chip's selectors. The colours are new tokens in both modes, and
+each clears 3:1 against the card and against the corridor and party walls.
+The badge numeral clears 4.6:1 on its own colour.
+
+**How it was verified:** `pnpm typecheck` clean; the spec, with
+`activity-cooldown.test.ts` rewritten for the new curve (10 min, then 5 min
+and 2 min as points come in; repeats in a day earning nothing; another
+member's page showing someone's level and leaderboard rank; no other
+house's people on the list; a `level` event reaching another member's
+stream), green twice in a row. None of it waits out a cooldown: the curve is
+read off the server's answers. Then a throwaway Playwright script put three
+people in one house, with backdated `audit_log` rows inserted into the
+scratch database to put them at levels 4, 3 and 2. At 1920x1080 and
+390x844, in light and dark, it checked that the second person saw the
+others' badges and rings and the leaderboard in the right order (a
+`<b>&"x"` name rendering as text), that the top person reached level 5 in
+the browser (water, party, pixel), got the toast, and that the other
+person's badge and leaderboard changed live, that the countdown read in
+minutes, that a reload didn't repeat the toast, and that a stored lower
+level produced the "while you were away" toast. No horizontal overflow and
+no page errors.
+
 ## Making the party room look like a room
 
 The party room's dropzone was a dashed amber rounded rectangle, which read as

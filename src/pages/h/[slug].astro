@@ -4,8 +4,11 @@
 // this house, and nothing is read until membership has been checked --- a
 // non-member gets a 403 "door" page with none of the house's data on it.
 import "../../styles/tokens.css";
+import "../../styles/levels.css";
 import { and, desc, eq } from "drizzle-orm";
-import { activityLevel } from "../../lib/activity";
+import LevelFlair from "../../components/LevelFlair.astro";
+import { earnedToday, houseLeaderboard } from "../../lib/activity";
+import { ACTION_HINTS, ACTION_WEIGHTS, formatWait, levelForPoints, levelLine, levelProgress, progressLine } from "../../lib/levels";
 import { renderAvatarSvg } from "../../lib/face";
 import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../../lib/canvas";
 import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../../lib/canvas-meta";
@@ -166,7 +169,7 @@ const pixelByCoord = new Map(paintedPixels.map((p) => [`${p.x},${p.y}`, p.colorI
 // This viewer's own remaining cooldown, computed the same way the API route
 // checks it (most recent pixel_place row), so a reload mid-cooldown shows
 // the real wait state instead of resetting to "ready". Per person, not per
-// house: like the activity level it comes from, it's a private perk that
+// house: like the activity level it comes from, it's a property of you that
 // follows you between houses.
 const lastPixelPlace = db
   .select({ createdAt: auditLog.createdAt })
@@ -175,8 +178,18 @@ const lastPixelPlace = db
   .orderBy(desc(auditLog.createdAt))
   .limit(1)
   .get();
-// Private: only ever rendered into this viewer's own page.
-const myActivity = activityLevel(person.id);
+// Levels are public within the house now (PROCESS.md, "Activity levels go
+// public"): every member's level and points in one grouped query, which
+// feeds the leaderboard below the feed and the badge on each avatar. People
+// in the corridor and party room are always members, so the presence and
+// party snapshots above already carry the same numbers.
+const leaderboard = houseLeaderboard(house.id);
+const myActivity = levelForPoints(leaderboard.find((r) => r.personId === person.id)?.points ?? 0);
+const myProgress = levelProgress(myActivity.points);
+// Hints for the progress bar: what each action is worth, and which ones
+// have already scored today (a repeat today earns nothing).
+const doneToday = new Set(earnedToday(person.id));
+const myHints = ACTION_HINTS.map((h) => ({ ...h, weight: ACTION_WEIGHTS[h.action] ?? 0, done: doneToday.has(h.action) }));
 const myCanvasCooldown = cooldownRemaining(lastPixelPlace?.createdAt ?? null, myActivity.cooldownSeconds);
 const canvasDisplayName = canvasName(house.id);
 
@@ -1581,11 +1594,14 @@ const CATEGORY_LABEL: Record<string, string> = {
                     data-person-id={person.id}
                     data-name={person.name}
                     data-avatar={person.avatar}
+                    data-level={myActivity.level}
                     hidden={inPartyRoom}
                   >
-                    <span class="party-avatar-circle you-circle">
-                      <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
-                    </span>
+                    <LevelFlair level={myActivity.level}>
+                      <span class="party-avatar-circle you-circle">
+                        <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
+                      </span>
+                    </LevelFlair>
                     <span class="party-guest-name">you</span>
                   </span>
                   <div class="corridor-guests" id="corridor-guests" aria-live="polite">
@@ -1595,11 +1611,14 @@ const CATEGORY_LABEL: Record<string, string> = {
                         data-person-id={p.personId}
                         data-name={p.name}
                         data-avatar={p.avatar}
-                        title={p.name}
+                        data-level={p.level}
+                        title={`${p.name} · level ${p.level}`}
                       >
-                        <span class="party-avatar-circle">
-                          <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(p.avatar)} />
-                        </span>
+                        <LevelFlair level={p.level}>
+                          <span class="party-avatar-circle">
+                            <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(p.avatar)} />
+                          </span>
+                        </LevelFlair>
                         <span class="party-guest-name">{p.name}</span>
                       </span>
                     ))}
@@ -1689,11 +1708,13 @@ const CATEGORY_LABEL: Record<string, string> = {
                         class="party-guest party-room-avatar"
                         data-person-id={g.personId}
                         data-own={g.personId === person.id ? "true" : undefined}
-                        title={g.name}
+                        title={`${g.name} · level ${g.level}`}
                       >
-                        <span class="party-avatar-circle">
-                          <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(g.avatar)} />
-                        </span>
+                        <LevelFlair level={g.level}>
+                          <span class="party-avatar-circle">
+                            <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(g.avatar)} />
+                          </span>
+                        </LevelFlair>
                         <span class="party-guest-name">{g.name}</span>
                       </span>
                     ))}
@@ -1798,10 +1819,47 @@ const CATEGORY_LABEL: Record<string, string> = {
                   ))}
                 </div>
                 <p id="canvas-cooldown" data-cooldown={myCanvasCooldown}>
-                  {myCanvasCooldown > 0 ? `wait ${myCanvasCooldown}s to place again` : "ready to place"}
+                  {myCanvasCooldown > 0 ? `wait ${formatWait(myCanvasCooldown)} to place again` : "ready to place"}
                 </p>
-                <p id="canvas-level">
-                  {myActivity && `level ${myActivity.level} · you can place every ${myActivity.cooldownSeconds}s`}
+                <p id="canvas-level" data-cooldown-seconds={myActivity.cooldownSeconds}>
+                  {levelLine(myActivity.level, myActivity.cooldownSeconds)}
+                </p>
+              </div>
+              {/* Your own progress to the next level. The level itself is
+                  public (badges, leaderboard); this bar is just for you. */}
+              <div
+                class="lvl-progress"
+                id="level-progress"
+                data-level={myActivity.level}
+                data-points={myActivity.points}
+                data-person-id={person.id}
+              >
+                <div class="lvl-progress-head">
+                  <strong id="level-progress-title">
+                    {myProgress.nextLevel === null ? `level ${myActivity.level} · the top` : `level ${myActivity.level}`}
+                  </strong>
+                  <span id="level-progress-text">{progressLine(myActivity.points)}</span>
+                </div>
+                <div
+                  class="lvl-bar"
+                  role="progressbar"
+                  aria-label="progress to the next level"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow={Math.round(myProgress.fraction * 100)}
+                >
+                  <div class="lvl-bar-fill" style={`width:${(myProgress.fraction * 100).toFixed(1)}%`}></div>
+                </div>
+                <ul class="lvl-hints" id="level-hints">
+                  {myHints.map((h) => (
+                    <li class={h.done ? "done" : undefined} data-action={h.action}>
+                      {h.label} <b>+{h.weight}</b>
+                      {h.done && " ✓ today"}
+                    </li>
+                  ))}
+                </ul>
+                <p class="lvl-hint-note">
+                  each kind of thing counts once a day, over the last 7 days. A bit of everything, most days, climbs fastest.
                 </p>
               </div>
             </div>
@@ -1905,6 +1963,37 @@ const CATEGORY_LABEL: Record<string, string> = {
               </article>
               ))}
             </div>
+
+            {/* Who's been around this week, in this house only. Ranked by
+                points (ties share a rank); live via level-dom.ts. */}
+            <section class="lb" id="leaderboard" aria-labelledby="leaderboard-title">
+              <h2 id="leaderboard-title">🏅 who's been around</h2>
+              <p class="lb-hint">levels from the last 7 days in {house.name}. Badges show on everyone's avatar.</p>
+              <ol class="lb-list" id="leaderboard-list">
+                {leaderboard.map((r) => (
+                  <li
+                    class={r.personId === person.id ? "lb-row lb-you" : "lb-row"}
+                    data-person-id={r.personId}
+                    data-points={r.points}
+                    data-name={r.name}
+                  >
+                    <span class="lb-rank">{r.rank}</span>
+                    <LevelFlair level={r.level}>
+                      <span class="lb-avatar">
+                        <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(r.avatar)} />
+                      </span>
+                    </LevelFlair>
+                    <span class="lb-name">
+                      <span class="lb-name-text">{r.name}</span>
+                      {r.personId === person.id && <span class="lb-you-tag">you</span>}
+                    </span>
+                    <span class="lb-score">
+                      <b class="lb-level">level {r.level}</b> · <span class="lb-points">{r.points} pts</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </section>
     </main>
     <script src="../../scripts/water-plant.ts" />
     <script src="../../scripts/compress-image.ts" />
@@ -1914,5 +2003,6 @@ const CATEGORY_LABEL: Record<string, string> = {
     <script src="../../scripts/party-drag.ts" />
     <script src="../../scripts/invite.ts" />
     <script src="../../scripts/live.ts" />
+    <script src="../../scripts/level-dom.ts" />
   </body>
 </html>

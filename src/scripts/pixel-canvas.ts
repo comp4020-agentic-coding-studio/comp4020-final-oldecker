@@ -2,20 +2,28 @@
 // places arrives through live.ts instead (same split as the plant: your own
 // action here, everyone else's over SSE).
 import { PALETTE } from "../lib/canvas";
+import { formatWait } from "../lib/levels";
 import { applyCanvasName } from "./canvas-dom";
 import { houseUrl } from "./house-context";
+import { applyLevel } from "./level-dom";
 
 const svg = document.querySelector<SVGSVGElement>("#pixel-canvas");
 const cooldownLabel = document.querySelector<HTMLElement>("#canvas-cooldown");
-const levelLabel = document.querySelector<HTMLElement>("#canvas-level");
+const ownPersonId = document.querySelector<HTMLElement>("#level-progress")?.dataset.personId ?? "";
 const swatches = document.querySelectorAll<HTMLButtonElement>(".canvas-swatch");
+
+const nowSecs = () => Math.floor(Date.now() / 1000);
 
 let selectedColor = 0;
 let cooldownUntil = 0; // unix seconds; 0 means "not on cooldown"
+// How long the wait in progress was meant to be in total, so a level-up
+// mid-wait can work out when the placement that started it happened.
+let cooldownLength = 0;
 let countdownTimer: ReturnType<typeof setInterval> | undefined;
 
 const initialRemaining = Number(cooldownLabel?.dataset.cooldown ?? "0");
-if (initialRemaining > 0) startCooldown(initialRemaining);
+const initialLength = Number(document.querySelector<HTMLElement>("#canvas-level")?.dataset.cooldownSeconds ?? "0");
+if (initialRemaining > 0) startCooldown(initialRemaining, initialLength || initialRemaining);
 
 for (const swatch of swatches) {
   swatch.addEventListener("click", () => {
@@ -24,31 +32,39 @@ for (const swatch of swatches) {
   });
 }
 
-function showLevel(level: number, cooldownSeconds: number): void {
-  if (levelLabel) levelLabel.textContent = `level ${level} · you can place every ${cooldownSeconds}s`;
-}
-
-function startCooldown(seconds: number): void {
-  cooldownUntil = Math.floor(Date.now() / 1000) + seconds;
+function startCooldown(seconds: number, length: number): void {
+  cooldownUntil = nowSecs() + seconds;
+  cooldownLength = length;
   clearInterval(countdownTimer);
   const tick = () => {
-    const remaining = cooldownUntil - Math.floor(Date.now() / 1000);
+    const remaining = cooldownUntil - nowSecs();
     if (remaining <= 0) {
       clearInterval(countdownTimer);
       cooldownUntil = 0;
       if (cooldownLabel) cooldownLabel.textContent = "ready to place";
       return;
     }
-    if (cooldownLabel) cooldownLabel.textContent = `wait ${remaining}s to place again`;
+    // "4m 32s", not "272s": at the low levels the wait is minutes long.
+    if (cooldownLabel) cooldownLabel.textContent = `wait ${formatWait(remaining)} to place again`;
   };
   tick();
   countdownTimer = setInterval(tick, 1000);
 }
 
+// Levelling up from anything else (watering, posting, another tab) shortens
+// the wait you're already in: the server lets you place once the NEW
+// cooldown has passed since your last placement, so the countdown follows.
+document.addEventListener("board:my-level", (e) => {
+  const { cooldownSeconds } = (e as CustomEvent<{ cooldownSeconds: number }>).detail;
+  if (cooldownUntil === 0 || cooldownLength === 0) return;
+  const placedAt = cooldownUntil - cooldownLength;
+  startCooldown(Math.max(0, placedAt + cooldownSeconds - nowSecs()), cooldownSeconds);
+});
+
 svg?.addEventListener("click", async (event) => {
   const rect = (event.target as SVGElement).closest<SVGRectElement>("rect[data-x]");
   if (!rect) return;
-  if (cooldownUntil > Math.floor(Date.now() / 1000)) return;
+  if (cooldownUntil > nowSecs()) return;
 
   const x = rect.dataset.x;
   const y = rect.dataset.y;
@@ -60,21 +76,24 @@ svg?.addEventListener("click", async (event) => {
   });
 
   if (res.status === 429) {
-    const { remaining, level, cooldownSeconds } = (await res.json()) as {
+    const { remaining, level, points, cooldownSeconds } = (await res.json()) as {
       remaining: number;
       level: number;
+      points: number;
       cooldownSeconds: number;
     };
-    showLevel(level, cooldownSeconds);
-    startCooldown(remaining);
+    startCooldown(remaining, cooldownSeconds);
+    applyLevel(ownPersonId, level, points);
     return;
   }
   if (!res.ok) return;
 
-  const placed = (await res.json()) as { colorIndex: number; cooldownSeconds: number; level: number };
+  const placed = (await res.json()) as { colorIndex: number; cooldownSeconds: number; level: number; points: number };
   rect.setAttribute("fill", PALETTE[placed.colorIndex]?.hex ?? "#ffffff");
-  showLevel(placed.level, placed.cooldownSeconds);
-  startCooldown(placed.cooldownSeconds);
+  // Countdown first, so a level-up this placement caused doesn't then
+  // "shorten" a wait that already uses the new cooldown.
+  startCooldown(placed.cooldownSeconds, placed.cooldownSeconds);
+  applyLevel(ownPersonId, placed.level, placed.points);
 });
 
 // Renaming the wall --- identical click-to-edit shape as the plant's own

@@ -6,9 +6,9 @@
 // plant-art.ts/temperature.ts): this has to be safe to bundle for the
 // browser too.
 export const CANVAS_SIZE = 32;
-// The base (level 1) cooldown; a person's real one comes from their private
-// activity level (src/lib/activity.ts, server-only).
-export const PLACE_COOLDOWN_SECONDS = 30;
+// The base (level 1) cooldown; a person's real one comes from their activity
+// level (the curve is src/lib/levels.ts, the counting src/lib/activity.ts).
+export const PLACE_COOLDOWN_SECONDS = 600;
 
 // A small, fixed palette rather than a free colour picker --- same "legible
 // at a glance, not infinite choice" reasoning as the avatars replacing a

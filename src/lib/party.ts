@@ -23,9 +23,10 @@
 // under their name, while the sweep/timer (no person in scope) logs under
 // `null`, the same split posts.ts's delete route vs. its sweep already use.
 import { and, eq, lt, sql } from "drizzle-orm";
+import { levelsFor } from "./activity";
 import { logAction } from "./audit";
 import { db } from "./db";
-import { broadcast } from "./events";
+import { broadcast, type PartyGuestEntry } from "./events";
 import { partyGuests, people } from "./schema";
 
 const PARTY_DURATION_SECONDS = 60 * 60 * 2; // "a couple of hours"
@@ -36,12 +37,7 @@ const PARTY_DURATION_SECONDS = 60 * 60 * 2; // "a couple of hours"
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const timerKey = (houseId: number, personId: string) => `${houseId}:${personId}`;
 
-export interface PartyGuest {
-  personId: string;
-  name: string;
-  avatar: string;
-  expiresAt: number;
-}
+export type PartyGuest = PartyGuestEntry;
 
 export function joinParty(houseId: number, personId: string): { expiresAt: number } {
   const expiresAt = Math.floor(Date.now() / 1000) + PARTY_DURATION_SECONDS;
@@ -114,12 +110,15 @@ export function sweepExpiredPartyGuests(): void {
 }
 
 export function partyRoomSnapshot(houseId: number): PartyGuest[] {
-  return db
+  const rows = db
     .select({ personId: partyGuests.personId, name: people.name, avatar: people.avatar, expiresAt: partyGuests.expiresAt })
     .from(partyGuests)
     .innerJoin(people, eq(partyGuests.personId, people.id))
     .where(eq(partyGuests.houseId, houseId))
     .all();
+  // Everyone's badge in one grouped query, not one per guest.
+  const levels = levelsFor(rows.map((r) => r.personId));
+  return rows.map((r) => ({ ...r, level: levels.get(r.personId)?.level ?? 1 }));
 }
 
 // Which houses this person is currently partying in --- used to refresh

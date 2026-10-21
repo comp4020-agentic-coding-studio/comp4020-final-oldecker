@@ -93,6 +93,19 @@
   --house-d-roof: #3a5a9c;
   --sign-wood: #b07a48;
   --sign-wood-dark: #8a5a30;
+  /* activity levels (src/styles/levels.css): the avatar ring and badge go
+     plain -> bronze -> silver -> gold -> a magenta/violet "special". These
+     carry meaning, so each clears 3:1 against --card (4.6-6.8:1) and the
+     corridor/party walls (3.8:1+), and the badge numeral on top of them
+     (--lvl-badge-ink) clears 4.6:1+. --lvl-5b is level 5's second hue. */
+  --lvl-1: #7a746c;
+  --lvl-2: #9a5524;
+  --lvl-3: #5c6b7e;
+  --lvl-4: #8a6400;
+  --lvl-5: #a8327a;
+  --lvl-5b: #6a3fc0;
+  --lvl-badge-ink: #ffffff;
+  --lvl-track: #efe8de;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -175,6 +188,17 @@
     --house-d-roof: #2b3a66;
     --sign-wood: #7a5638;
     --sign-wood-dark: #5a3e26;
+    /* lighter metals for a dark surface: 4.9-9.1:1 on --card, 3.8:1+ on
+       the night-time corridor and party floors; the badge numeral flips to
+       dark ink (5.7:1+ on every level colour) */
+    --lvl-1: #8a93c0;
+    --lvl-2: #e09a5c;
+    --lvl-3: #c3cddc;
+    --lvl-4: #f0c44a;
+    --lvl-5: #f590cf;
+    --lvl-5b: #b9a0ff;
+    --lvl-badge-ink: #1a1b26;
+    --lvl-track: #2f3450;
   }
 }
 * {

@@ -1,0 +1,20 @@
+---
+// The level badge and ring around an avatar circle, server-rendered. Put the
+// avatar circle in the slot:
+//
+//   <LevelFlair level={3}><span class="party-avatar-circle">...</span></LevelFlair>
+//
+// Must stay byte-for-byte the same shape as flairHtml() in src/lib/levels.ts
+// (the client-built twin). Styles live in src/styles/levels.css, which is a
+// global stylesheet so it reaches client-built chips too. Any element with a
+// data-person-id that contains one of these is kept up to date live by
+// src/scripts/level-dom.ts when that person's level changes.
+import { clampLevel } from "../lib/levels";
+
+interface Props {
+  level: number | undefined;
+}
+const lv = clampLevel(Astro.props.level ?? 1);
+---
+
+<span class="lvl-flair" data-level={lv}><slot /><span class="lvl-badge" role="img" aria-label={`level ${lv}`}>{lv}</span></span>
