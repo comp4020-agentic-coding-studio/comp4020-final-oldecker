@@ -1,0 +1,290 @@
+---
+// The house's front door, from the inside: whoever is knocking (they typed
+// this house's name on the street) stands on the doormat, and any member can
+// let them in or turn them away. Self-contained --- its own markup, styles
+// and script (src/scripts/front-door.ts) --- so the house page only has to
+// drop it in. Rendered only after the house page has checked membership, so
+// a non-member never sees who's knocking. Hidden while nobody is.
+//
+// The buttons are real forms posting to /api/houses/knocks/*, so they work
+// without JS; the script upgrades them to fetch() and keeps the doormat in
+// step with knocks arriving and being answered (by anyone) over SSE.
+import { renderAvatarSvg } from "../lib/face";
+import { pendingKnocks } from "../lib/knocks";
+
+interface Props {
+  houseId: number;
+  houseSlug: string;
+}
+const { houseId, houseSlug } = Astro.props;
+const knocks = pendingKnocks(houseId);
+---
+
+<section class="front-door" id="front-door" aria-label="at the front door" data-house={houseSlug} hidden={knocks.length === 0}>
+  <div class="fd-scene" aria-hidden="true">
+    <svg class="fd-door" id="fd-door" viewBox="0 0 70 110">
+      <rect x="2" y="4" width="66" height="106" rx="5" class="fd-frame" />
+      <rect x="9" y="11" width="52" height="99" rx="3" class="fd-door-fill" />
+      <rect x="20" y="20" width="30" height="16" rx="8" class="fd-glass" />
+      <path d="M35 20 V36" class="fd-glass-bar" stroke-width="2" />
+      <rect x="17" y="46" width="36" height="22" rx="2" class="fd-panel" />
+      <rect x="17" y="74" width="36" height="28" rx="2" class="fd-panel" />
+      <circle cx="52" cy="62" r="3" class="fd-knob" />
+      <rect x="27" y="40" width="16" height="3" rx="1.5" class="fd-knob" />
+    </svg>
+    <span class="fd-knock-word fd-knock-a">knock</span>
+    <span class="fd-knock-word fd-knock-b">knock</span>
+  </div>
+  <div class="fd-body">
+    <h2>someone's at the door</h2>
+    <p class="fd-hint">they asked for this house by name. Anyone who lives here can let them in.</p>
+    <ul class="fd-list" id="fd-list" aria-live="polite">
+      {
+        knocks.map((k) => (
+          <li class="fd-knocker" data-knock-id={k.id}>
+            <span class="fd-avatar">
+              <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(k.avatar)} />
+            </span>
+            <span class="fd-name">{k.name}</span>
+            <form class="fd-answer" method="post" action="/api/houses/knocks/let-in">
+              <input type="hidden" name="house" value={houseSlug} />
+              <input type="hidden" name="knock" value={String(k.id)} />
+              <button type="submit" class="fd-let-in">let in</button>
+            </form>
+            <form class="fd-answer" method="post" action="/api/houses/knocks/turn-away">
+              <input type="hidden" name="house" value={houseSlug} />
+              <input type="hidden" name="knock" value={String(k.id)} />
+              <button type="submit" class="fd-turn-away">turn away</button>
+            </form>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="fd-note" id="fd-note" role="status"></p>
+  </div>
+  <div class="fd-mat" aria-hidden="true"></div>
+</section>
+
+<script src="../scripts/front-door.ts"></script>
+
+<style>
+  /* A little porch: the closed front door on the left, the doormat along
+     the bottom, and whoever's knocking standing on it. Everything inside
+     .fd-list can be rebuilt by the script, hence :global() there. */
+  .front-door {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: end;
+    gap: 0 1rem;
+    margin: 0 0 1rem;
+    padding: 0.9rem 1rem 1.3rem;
+    border: 2px solid var(--knock-accent);
+    border-radius: 1rem;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 22px, var(--knock-wall-line) 22px 24px),
+      var(--knock-wall);
+    overflow: hidden;
+  }
+  .front-door[hidden] {
+    display: none;
+  }
+  .fd-scene {
+    position: relative;
+    z-index: 1;
+    width: 4.6rem;
+  }
+  .fd-door {
+    display: block;
+    width: 100%;
+    transform-origin: 50% 100%;
+  }
+  .fd-door:global(.knocking) {
+    animation: fd-rattle 0.5s ease-in-out 2;
+  }
+  @keyframes fd-rattle {
+    0%,
+    100% {
+      transform: rotate(0);
+    }
+    25% {
+      transform: rotate(-1.6deg);
+    }
+    75% {
+      transform: rotate(1.6deg);
+    }
+  }
+  .fd-frame {
+    fill: var(--hall-frame);
+  }
+  .fd-door-fill {
+    fill: var(--knock-door);
+  }
+  .fd-panel {
+    fill: var(--knock-door-dark);
+  }
+  .fd-glass {
+    fill: var(--street-sky-top);
+  }
+  .fd-glass-bar {
+    stroke: var(--hall-frame);
+  }
+  .fd-knob {
+    fill: var(--hall-light);
+  }
+  /* the two "knock"s sit on the door's latch edge, inside the scene's
+     own column, so they never run into the text beside it */
+  .fd-knock-word {
+    position: absolute;
+    right: -0.45rem;
+    padding: 0 0.3rem;
+    border-radius: 0.4rem;
+    background: var(--card);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--knock-accent-ink);
+    transform: rotate(-8deg);
+  }
+  .fd-knock-a {
+    top: 2.9rem;
+  }
+  .fd-knock-b {
+    top: 4.1rem;
+    right: -0.2rem;
+    transform: rotate(6deg);
+  }
+  .fd-body {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+  }
+  .fd-body h2 {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+  .fd-hint {
+    margin: 0 0 0.6rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  .fd-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .fd-list :global(.fd-knocker) {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    grid-template-areas:
+      "face name name"
+      "face yes no";
+    justify-content: start;
+    align-items: center;
+    gap: 0.15rem 0.55rem;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0.45rem 0.6rem 0.45rem 0.45rem;
+    border-radius: 0.9rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 0 var(--room-shadow);
+  }
+  .fd-list :global(.fd-knocker.leaving) {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  .fd-list :global(.fd-avatar) {
+    grid-area: face;
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 50%;
+    border: 2.5px solid var(--ink);
+    background: var(--card);
+    overflow: hidden;
+    display: inline-flex;
+  }
+  .fd-list :global(.fd-avatar svg) {
+    width: 100%;
+    height: 100%;
+  }
+  .fd-list :global(.fd-name) {
+    grid-area: name;
+    min-width: 0;
+    font-weight: 600;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fd-list :global(.fd-answer) {
+    display: inline;
+    margin: 0;
+  }
+  .fd-list :global(.fd-answer:first-of-type) {
+    grid-area: yes;
+  }
+  .fd-list :global(.fd-answer:last-of-type) {
+    grid-area: no;
+  }
+  .fd-list :global(.fd-answer button) {
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .fd-list :global(.fd-let-in) {
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .fd-list :global(.fd-turn-away) {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+  }
+  .fd-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  .fd-note:empty {
+    display: none;
+  }
+  /* the doormat the knockers stand on */
+  .fd-mat {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 0.8rem;
+    background: repeating-linear-gradient(90deg, var(--knock-mat) 0 6px, var(--knock-mat-dark) 6px 8px);
+    border-top: 2px solid var(--knock-mat-dark);
+  }
+  @media (max-width: 520px) {
+    .front-door {
+      gap: 0 0.7rem;
+      padding: 0.8rem 0.7rem 1.2rem;
+    }
+    .fd-scene {
+      width: 3.4rem;
+      align-self: start;
+    }
+    .fd-knock-word {
+      display: none;
+    }
+    .fd-list :global(.fd-knocker) {
+      width: 100%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fd-door:global(.knocking) {
+      animation: none;
+    }
+  }
+</style>

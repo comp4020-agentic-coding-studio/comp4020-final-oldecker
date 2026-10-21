@@ -87,6 +87,42 @@ export const houseMembers = sqliteTable(
   ],
 );
 
+// Someone standing at a house's front door: "visit by name" no longer makes
+// you a member, it knocks (see PROCESS.md's "Knocking" section). A knock
+// waits until a member answers it --- no expiry --- or the knocker walks
+// away. outcome is 'pending' | 'let_in' | 'turned_away' | 'cancelled'; rows
+// are never deleted, so the table doubles as the history of who knocked
+// where. The partial unique index is the real guard for "at most one
+// pending knock per (house, person)": a second knock while one is waiting
+// is a conflict, but once it's answered the person may knock again.
+// seenAt is when the knocker was shown the answer on their street page, so
+// "you were turned away" is said once, not on every visit.
+export const houseKnocks = sqliteTable(
+  "house_knocks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    houseId: integer("house_id")
+      .notNull()
+      .references(() => houses.id),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id),
+    outcome: text("outcome").notNull().default("pending"),
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+    answeredAt: integer("answered_at"),
+    answeredBy: text("answered_by").references(() => people.id),
+    seenAt: integer("seen_at"),
+  },
+  (table) => [
+    uniqueIndex("house_knocks_one_pending")
+      .on(table.houseId, table.personId)
+      .where(sql`${table.outcome} = 'pending'`),
+    index("house_knocks_person_idx").on(table.personId),
+  ],
+);
+
 // One row per logged-in browser. `id` is the SHA-256 of the random token in
 // the cookie, never the token itself, so a leaked database (or backup) can't
 // be replayed as logins. Rooms (a later phase) would hang off people, not

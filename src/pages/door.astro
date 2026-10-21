@@ -2,12 +2,13 @@
 // What /h/<slug> shows a logged-in non-member (403) or for a house that
 // doesn't exist (404), via Astro.rewrite --- the URL stays /h/<slug>.
 // Deliberately carries nothing from inside the house: no posts, no members,
-// no presence. "Come in" is the same join-by-name a person could do from
-// the street page's signpost, so it opens nothing that wasn't already open
-// to anyone who knows the name.
+// no presence. "Knock" is the same knock a person could do from the street
+// page's signpost: it stands you at the door until a member answers, and
+// opens nothing by itself.
 import DoorLayout from "../layouts/DoorLayout.astro";
 import { houseBySlug, isMember } from "../lib/houses";
 import { currentPerson } from "../lib/identity";
+import { pendingKnockOf } from "../lib/knocks";
 
 export const prerender = false;
 
@@ -17,18 +18,29 @@ if (!person) return Astro.redirect("/login");
 const house = slug ? houseBySlug(slug) : undefined;
 // Visited directly while actually a member: there's nothing to knock on.
 if (house && isMember(house.id, person.id)) return Astro.redirect(`/h/${encodeURIComponent(house.slug)}`);
+const waiting = house ? pendingKnockOf(house.id, person.id) : undefined;
 Astro.response.status = house ? 403 : 404;
 ---
 
 <DoorLayout title={house ? house.name : "no such house"} paint={house?.id ?? 3}>
   {
-    house ? (
+    house && waiting ? (
       <>
         <h1>{house.name}</h1>
-        <p>You're not a member of this house yet, so its door is shut.</p>
+        <p>You've knocked. You're waiting at the door until someone inside lets you in.</p>
+        <form method="post" action="/api/houses/knocks/cancel">
+          <input type="hidden" name="knock" value={String(waiting.id)} />
+          <button type="submit" class="door-secondary-button">stop waiting</button>
+        </form>
+        <a class="door-link secondary" href="/houses">back to the street</a>
+      </>
+    ) : house ? (
+      <>
+        <h1>{house.name}</h1>
+        <p>You're not a member of this house, so its door is shut. Knock, and anyone inside can let you in.</p>
         <form method="post" action="/api/houses/join">
           <input type="hidden" name="name" value={house.slug} />
-          <button type="submit">come in</button>
+          <button type="submit">knock</button>
         </form>
         <a class="door-link secondary" href="/houses">back to the street</a>
       </>
@@ -41,3 +53,11 @@ Astro.response.status = house ? 403 : 404;
     )
   }
 </DoorLayout>
+
+<style>
+  /* scoped, so it outranks DoorLayout's global `.door-card button` */
+  .door-secondary-button {
+    background: transparent;
+    color: var(--ink);
+  }
+</style>

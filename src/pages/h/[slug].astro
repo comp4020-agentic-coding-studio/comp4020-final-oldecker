@@ -5,6 +5,7 @@
 // non-member gets a 403 "door" page with none of the house's data on it.
 import "../../styles/tokens.css";
 import { and, desc, eq } from "drizzle-orm";
+import FrontDoorKnocks from "../../components/FrontDoorKnocks.astro";
 import { activityLevel } from "../../lib/activity";
 import { renderAvatarSvg } from "../../lib/face";
 import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../../lib/canvas";
@@ -1538,12 +1539,14 @@ const CATEGORY_LABEL: Record<string, string> = {
               </div>
             </header>
             <div id="invite-panel" class="invite-panel" hidden>
-              <p>Anyone with this link can join <strong>{house.name}</strong>. Or they can type its name on the street.</p>
+              <p>Anyone with this link can join <strong>{house.name}</strong> straight away. Someone who types its name on the street knocks instead, and waits at the door until one of you lets them in.</p>
               <div class="invite-row">
                 <input id="invite-link" type="text" readonly value={invitePath} data-path={invitePath} aria-label="invite link" />
                 <button type="button" id="invite-copy" class="pill">copy</button>
               </div>
             </div>
+
+            <FrontDoorKnocks houseId={house.id} houseSlug={house.slug} />
 
             {/* The house map: the corridor everyone stands in by default, the
                 party room you drag into, and the street door at the end that

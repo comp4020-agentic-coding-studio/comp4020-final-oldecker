@@ -31,7 +31,32 @@ export type LiveEvent =
   | {
       type: "party_snapshot";
       data: { guests: Array<{ personId: string; name: string; avatar: string; expiresAt: number }> };
-    };
+    }
+  // Someone at the front door (see src/lib/knocks.ts). Only ever broadcast
+  // into the knocked-on house's channel, which only its members can
+  // subscribe to --- so who's knocking is as private as who's inside.
+  // knock_answered covers let in, turned away, walked off (cancelled) and
+  // came in by invite instead; every member's door just drops the knock.
+  | { type: "knock"; data: KnockEntry }
+  | { type: "knock_answered"; data: { id: number; name: string; outcome: string; by: string | null } }
+  | { type: "knock_snapshot"; data: { knocks: KnockEntry[] } };
+
+export interface KnockEntry {
+  id: number;
+  personId: string;
+  name: string;
+  avatar: string;
+  createdAt: number;
+}
+
+// The other direction: what a KNOCKER hears while standing at someone's
+// door. They aren't a member, so they can't be on that house's channel;
+// instead each person has their own channel, which only their own street
+// page subscribes to (/api/street-events, keyed on the session cookie).
+export type PersonEvent = {
+  type: "my_knock";
+  data: { id: number; outcome: string; houseSlug: string; houseName: string };
+};
 
 const bus = new EventEmitter();
 bus.setMaxListeners(0); // one listener per open browser tab; no fixed ceiling
@@ -45,6 +70,17 @@ export function broadcast(houseId: number, event: LiveEvent): void {
 export function subscribe(houseId: number, onEvent: (event: LiveEvent) => void): () => void {
   bus.on(channel(houseId), onEvent);
   return () => bus.off(channel(houseId), onEvent);
+}
+
+const personChannel = (personId: string) => `person:${personId}`;
+
+export function tellPerson(personId: string, event: PersonEvent): void {
+  bus.emit(personChannel(personId), event);
+}
+
+export function subscribePerson(personId: string, onEvent: (event: PersonEvent) => void): () => void {
+  bus.on(personChannel(personId), onEvent);
+  return () => bus.off(personChannel(personId), onEvent);
 }
 
 // houseId -> personId -> {name, avatar, connections}. "connections" rather

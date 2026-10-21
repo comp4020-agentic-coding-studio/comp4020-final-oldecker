@@ -7,7 +7,7 @@
 import type { PlantStage } from "../lib/plant-art";
 import { PALETTE } from "../lib/canvas";
 import { applyCanvasName } from "./canvas-dom";
-import { houseUrl } from "./house-context";
+import { source } from "./house-events";
 import {
   applyPartyJoin,
   applyPartyLeave,
@@ -31,7 +31,6 @@ interface PixelEvent {
 
 const ownPersonId = document.querySelector<HTMLElement>("#party-you")?.dataset.personId ?? "";
 
-const source = new EventSource(houseUrl("/api/events"));
 
 source.addEventListener("presence", (e) => {
   applyPresence((JSON.parse((e as MessageEvent).data) as { here: PresenceEntry[] }).here, ownPersonId);

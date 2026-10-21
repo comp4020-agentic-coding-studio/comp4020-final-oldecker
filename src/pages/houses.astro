@@ -10,11 +10,27 @@ import { presentCount } from "../lib/events";
 import { renderAvatarSvg } from "../lib/face";
 import { housesOf, MAX_HOUSE_NAME_LENGTH, memberCounts, MIN_HOUSE_NAME_LENGTH } from "../lib/houses";
 import { currentPerson } from "../lib/identity";
+import { markKnocksSeen, myKnocks } from "../lib/knocks";
 
 export const prerender = false;
 
 const person = currentPerson(Astro.cookies);
 if (!person) return Astro.redirect("/login");
+
+// Your knocks (see src/lib/knocks.ts): every door you're waiting at, drawn
+// as that house with you standing on its step, and any answer you haven't
+// been told yet --- said once, here, then marked seen.
+const knocks = myKnocks(person.id);
+const waiting = knocks.filter((k) => k.outcome === "pending");
+const answered = knocks.filter((k) => k.outcome !== "pending");
+markKnocksSeen(
+  person.id,
+  answered.map((k) => k.id),
+);
+const avatarSvg = renderAvatarSvg(person.avatar);
+// Just knocked (the join route sends you here with ?knocked=<slug>): say so,
+// but only if that knock is really still waiting.
+const justKnocked = waiting.find((k) => k.houseSlug === Astro.url.searchParams.get("knocked"));
 
 const mine = housesOf(person.id);
 const counts = memberCounts(mine.map((h) => h.id));
@@ -58,12 +74,38 @@ const visitError = buildError ? null : error;
       </header>
       <p class="street-lede">
         {
-          street.length === 0
-            ? "You don't live anywhere yet. Build a house, or visit one by its name."
-            : "Your houses. Drag yourself onto one to go in, or just tap it."
+          street.length === 0 && waiting.length === 0
+            ? "You don't live anywhere yet. Build a house, or knock on one by its name."
+            : street.length === 0
+              ? "You don't live anywhere yet. Build a house while you wait to be let in."
+              : "Your houses. Drag yourself onto one to go in, or just tap it."
         }
       </p>
       {visitError && !buildError && <p class="street-error" role="alert">{visitError}</p>}
+      <div class="knock-news" id="knock-news" aria-live="polite">
+        {
+          justKnocked && (
+            <p class="knock-notice knocked">
+              You knocked on <strong>{justKnocked.houseName}</strong>. You're waiting at its door until someone
+              inside lets you in.
+            </p>
+          )
+        }
+        {
+          answered.map((k) =>
+            k.outcome === "let_in" ? (
+              <p class="knock-notice let-in">
+                You were let into <strong>{k.houseName}</strong>.{" "}
+                <a href={`/h/${encodeURIComponent(k.houseSlug)}`}>go in</a>
+              </p>
+            ) : (
+              <p class="knock-notice turned-away">
+                <strong>{k.houseName}</strong> didn't let you in this time. You can knock again later.
+              </p>
+            ),
+          )
+        }
+      </div>
 
       <section class="street" aria-label="your houses">
         <div class="street-sky" aria-hidden="true">
@@ -84,6 +126,36 @@ const visitError = buildError ? null : error;
                   </span>
                 </span>
               </a>
+            ))
+          }
+
+          {
+            waiting.map((k) => (
+              <div
+                class="lot waiting-lot"
+                data-knock-id={k.id}
+                data-house-slug={k.houseSlug}
+                data-house-name={k.houseName}
+                title={`waiting at the door of ${k.houseName}`}
+              >
+                <div class="waiting-scene">
+                  <HouseFront paint={k.houseId} class="lot-house" />
+                  <span class="waiting-bubble" aria-hidden="true">
+                    knock knock
+                  </span>
+                  <span class="waiting-you" aria-hidden="true">
+                    <svg viewBox="0 0 64 64" set:html={avatarSvg} />
+                  </span>
+                </div>
+                <span class="lot-sign waiting-sign">
+                  <span class="lot-name">{k.houseName}</span>
+                  <span class="lot-meta waiting-status">waiting at the door</span>
+                  <form class="waiting-cancel" method="post" action="/api/houses/knocks/cancel">
+                    <input type="hidden" name="knock" value={String(k.id)} />
+                    <button type="submit">stop waiting</button>
+                  </form>
+                </span>
+              </div>
             ))
           }
 
@@ -121,7 +193,7 @@ const visitError = buildError ? null : error;
               <ellipse cx="60" cy="116" rx="18" ry="4" class="sign-shadow" />
             </svg>
             <form class="lot-form" method="post" action="/api/houses/join">
-              <label for="visit-name">visit by name</label>
+              <label for="visit-name">knock by name</label>
               <input
                 id="visit-name"
                 name="name"
@@ -130,7 +202,7 @@ const visitError = buildError ? null : error;
                 maxlength="60"
                 required
               />
-              <button type="submit">visit</button>
+              <button type="submit">knock</button>
             </form>
           </div>
         </div>
@@ -146,7 +218,7 @@ const visitError = buildError ? null : error;
               data-draggable={street.length ? "true" : undefined}
             >
               <span class="street-avatar-circle">
-                <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
+                <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarSvg} />
               </span>
               <span class="street-avatar-name">{person.name}</span>
             </span>
@@ -157,6 +229,7 @@ const visitError = buildError ? null : error;
       </section>
     </main>
     <script src="../scripts/street.ts" />
+    <script src="../scripts/street-knocks.ts" />
   </body>
 </html>
 
@@ -327,6 +400,120 @@ const visitError = buildError ? null : error;
     font-size: 0.7rem;
     color: var(--text-muted);
     white-space: nowrap;
+  }
+
+  /* --- your knocks. Notices above the street, said once; and for each
+     door you're waiting at, that house on the street with you on its step. */
+  .knock-news {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0 0 0.8rem;
+  }
+  .knock-news:empty {
+    display: none;
+  }
+  .knock-news :global(.knock-notice) {
+    margin: 0;
+    padding: 0.5rem 0.8rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--knock-accent);
+    background: var(--card);
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+  }
+  .knock-news :global(.knock-notice.let-in) {
+    border-left-color: var(--street-grass-dark);
+  }
+  .knock-news :global(.knock-notice.turned-away) {
+    border-left-color: var(--text-muted);
+  }
+  .knock-news :global(.knock-notice a) {
+    color: inherit;
+    font-weight: 600;
+  }
+  .waiting-lot {
+    color: inherit;
+    padding: 0.4rem 0.4rem 0;
+  }
+  .waiting-scene {
+    position: relative;
+    width: 9.5rem;
+    margin-bottom: -2px;
+  }
+  .waiting-lot :global(.lot-house) {
+    width: 100%;
+    opacity: 0.72;
+  }
+  /* you, on the doorstep: the house's door sits at x 50..70 of its 120
+     viewBox, so the avatar is centred at 50% and stands on the step */
+  .waiting-you {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 2.3rem;
+    height: 2.3rem;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    border: 2.5px solid var(--ink);
+    background: var(--card);
+    overflow: hidden;
+    display: inline-flex;
+    box-shadow: 0 0.3rem 0 -0.1rem var(--room-shadow);
+  }
+  .waiting-you svg {
+    width: 100%;
+    height: 100%;
+  }
+  .waiting-bubble {
+    position: absolute;
+    left: 58%;
+    bottom: 2.6rem;
+    padding: 0.05rem 0.45rem;
+    border-radius: 0.6rem;
+    background: var(--card);
+    border: 1.5px solid var(--knock-accent);
+    color: var(--knock-accent-ink);
+    font-size: 0.65rem;
+    font-weight: 700;
+    white-space: nowrap;
+    transform: rotate(-6deg);
+    animation: waiting-bob 2.4s ease-in-out infinite;
+  }
+  @keyframes waiting-bob {
+    0%,
+    100% {
+      transform: rotate(-6deg) translateY(0);
+    }
+    50% {
+      transform: rotate(-3deg) translateY(-3px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .waiting-bubble {
+      animation: none;
+    }
+  }
+  .waiting-sign {
+    border-style: dashed;
+    border-color: var(--knock-accent);
+  }
+  .waiting-status {
+    color: var(--knock-accent-ink);
+    font-weight: 600;
+  }
+  .waiting-cancel {
+    margin: 0.2rem 0 0.1rem;
+  }
+  .waiting-cancel button {
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
   }
 
   /* the empty plot and the signpost: same footprint as a house, art on
@@ -521,6 +708,17 @@ const visitError = buildError ? null : error;
     }
     .house-lot :global(.lot-house) {
       width: min(8rem, 100%);
+    }
+    .waiting-scene {
+      width: min(8rem, 100%);
+    }
+    .waiting-you {
+      width: 2rem;
+      height: 2rem;
+    }
+    .waiting-bubble {
+      left: 50%;
+      bottom: 2.3rem;
     }
     .plot-art,
     .sign-art {

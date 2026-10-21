@@ -11,6 +11,7 @@
 import type { APIRoute } from "astro";
 import { markAbsent, markPresent, presenceSnapshot, subscribe, type LiveEvent } from "../../lib/events";
 import { houseAccess } from "../../lib/houses";
+import { pendingKnocks } from "../../lib/knocks";
 import { partyRoomSnapshot } from "../../lib/party";
 
 export const prerender = false;
@@ -44,6 +45,9 @@ export const GET: APIRoute = ({ cookies, url }) => {
       // connection shouldn't wait on the next party_joined/party_left
       // broadcast to find out who's already in the room.
       send({ type: "party_snapshot", data: { guests: partyRoomSnapshot(house.id) } });
+      // ...and who's at the front door, so a reconnect after a dropped
+      // connection doesn't leave a knock showing that's since been answered.
+      send({ type: "knock_snapshot", data: { knocks: pendingKnocks(house.id) } });
 
       heartbeat = setInterval(() => controller.enqueue(encoder.encode(": keep-alive\n\n")), HEARTBEAT_MS);
     },

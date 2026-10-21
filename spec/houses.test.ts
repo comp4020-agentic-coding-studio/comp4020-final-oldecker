@@ -90,16 +90,24 @@ it("joins by invite code", async () => {
   expect(bad.headers.get("location")).toContain("error=bad-invite");
 });
 
-it("joins by typing the house's name, in any case", async () => {
+// Typing a name KNOCKS rather than joining --- spec/knocks.test.ts has the
+// whole knock contract; this just checks the name is found in any case and
+// that a knock isn't a way in.
+it("typing a house's name, in any case, knocks on its door (and isn't a way in)", async () => {
   const owner = await signup(baseUrl, uniqueName("Namer"));
   const name = uniqueName("Visit Me");
   const created = await formPost(baseUrl, "/api/houses", { name }, owner);
   const slug = decodeURIComponent(created.headers.get("location")!.slice(3));
   const visitor = await signup(baseUrl, uniqueName("Visitor"));
 
-  const joined = await formPost(baseUrl, "/api/houses/join", { name: `  ${name.toUpperCase()} ` }, visitor);
-  expect(joined.headers.get("location")).toBe(`/h/${encodeURIComponent(slug)}`);
-  expect((await page(slug, visitor)).status).toBe(200);
+  const knocked = await formPost(baseUrl, "/api/houses/join", { name: `  ${name.toUpperCase()} ` }, visitor);
+  expect(knocked.status).toBe(303);
+  expect(knocked.headers.get("location")).toBe(`/houses?${new URLSearchParams({ knocked: slug })}`);
+  expect((await page(slug, visitor)).status, "a knock must not let you in").toBe(403);
+
+  // the owner, already a member, typing the name just walks in
+  const ownerIn = await formPost(baseUrl, "/api/houses/join", { name }, owner);
+  expect(ownerIn.headers.get("location")).toBe(`/h/${encodeURIComponent(slug)}`);
 
   const nope = await formPost(baseUrl, "/api/houses/join", { name: uniqueName("Nowhere") }, visitor);
   expect(nope.headers.get("location")).toContain("error=no-such-house");

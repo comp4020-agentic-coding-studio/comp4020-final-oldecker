@@ -93,6 +93,18 @@
   --house-d-roof: #3a5a9c;
   --sign-wood: #b07a48;
   --sign-wood-dark: #8a5a30;
+  /* the front door, from inside, when someone's knocking: a warm porch
+     wall, the door, a doormat. --knock-accent is the porch's outline
+     (a UI edge, so it holds 3:1 on --bg: 4.6:1); --knock-accent-ink is
+     the little "knock knock" lettering on its --card pill (5.9:1). */
+  --knock-accent: #c0662f;
+  --knock-accent-ink: #a5521f;
+  --knock-wall: #fbe9d4;
+  --knock-wall-line: #f5dcc0;
+  --knock-door: #4a86a8;
+  --knock-door-dark: #3d7090;
+  --knock-mat: #c9a572;
+  --knock-mat-dark: #a8823f;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -175,6 +187,16 @@
     --house-d-roof: #2b3a66;
     --sign-wood: #7a5638;
     --sign-wood-dark: #5a3e26;
+    /* the porch at night: outline and lettering lighten to hold their
+       contrast on the dark --bg/--card (6.9:1 and 6.0:1) */
+    --knock-accent: #e8935a;
+    --knock-accent-ink: #f0a877;
+    --knock-wall: #2e2a44;
+    --knock-wall-line: #2a2640;
+    --knock-door: #3d5f8a;
+    --knock-door-dark: #324f74;
+    --knock-mat: #4a3f5e;
+    --knock-mat-dark: #3a3150;
   }
 }
 * {
