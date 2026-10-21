@@ -461,3 +461,39 @@ the client only displays and counts down what it is told. Because a
 placement is itself activity, the success response is computed after the
 row is written, so the placement that tips you into a new level starts its
 countdown at the new, shorter cooldown.
+
+## Making the party room look like a room
+
+The party room's dropzone was a dashed amber rounded rectangle, which read as
+"a form control" rather than "a place". The ask was to make it look like an
+actual little room, so the dropzone is now one: wallpaper stripes for the back
+wall, a wood-plank floor with a dark skirting board, a rug, a window with
+curtains, a sofa, a standing lamp with a soft glow, balloons, and a string of
+bunting across the top --- all hand-drawn inline SVG/CSS in the app's flat
+style, in one `pointer-events: none` layer behind the guests. Guests stand on
+the floor in a bottom-aligned row with a little shadow under each avatar, and
+their names sit in a small card-coloured pill so the text never has to be read
+off the rug.
+
+Two design calls worth recording. First, the room's paint is all new colour
+tokens in both the light and dark blocks (the dark room is the same room at
+night: indigo wall, the lamp and bunting as the warm lights), but the things
+that carry meaning keep tokens that were already contrast-checked: the room's
+outline is still `--party-accent` (>= 3:1), and name tags are `--ink` on
+`--card`. Decorative paint has no contrast floor to meet. Second, the drag code
+is untouched: the hit test is still the dropzone's bounding rect, so the whole
+room is the target and the decorations can't block it. Guest markup is
+unchanged too, so `party-dom.ts` needed no edits; the only client-built
+elements are styled via `:global()` as before.
+
+At phone width (~250px of room) the sofa and balloons are dropped rather than
+squeezed in, and in-room chips shrink slightly so about five guests stand on
+one floor row. My first mobile screenshot showed a second row of guests
+standing on the *wall*, which is what prompted that.
+
+**How it was verified:** `pnpm typecheck`, `pnpm build` and the test suite
+against a scratch DB; then a throwaway Playwright script (outside the repo)
+took screenshots of the empty room and with 1 and 5 guests, light and dark,
+at 1920x1080 and 390x844 (no horizontal overflow in any), and did a real mouse
+drag of `#party-you` into the room (guest appears, chip hides) and back out
+(guest gone, chip returns).

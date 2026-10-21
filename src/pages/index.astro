@@ -181,6 +181,34 @@ const CATEGORY_LABEL: Record<string, string> = {
            as a background tint, never for text. */
         --party-accent: #b8791f;
         --party-glow: #b8791f14;
+        /* the party room's furniture and walls. Purely decorative paint, so
+           no contrast floor applies to these --- the things that DO carry
+           meaning stay on tokens already checked above: the room's outline
+           (--party-accent, 3.4:1+ on --bg) and the guest name tags (--ink on
+           --card, 14:1+, since the tags have their own card-coloured pill
+           and never sit directly on the floor or rug). */
+        --room-wall: #f8e6c6;
+        --room-wall-stripe: #f4dcb6;
+        --room-floor: #dcbb8c;
+        --room-floor-line: #c9a572;
+        --room-trim: #a8733c;
+        --room-rug: #d96a5b;
+        --room-rug-edge: #f3d9a0;
+        --room-sofa: #4a9488;
+        --room-sofa-dark: #38766c;
+        --room-sky: #bfe4f6;
+        --room-sun: #f7c948;
+        --room-curtain: #e8a29a;
+        --room-lamp: #f2c14e;
+        --room-lamp-glow: #f2c14e40;
+        --room-flag-a: #e0605a;
+        --room-flag-b: #4a86d8;
+        --room-flag-c: #3fa08f;
+        --room-balloon-a: #e0605a;
+        --room-balloon-b: #4a86d8;
+        --room-balloon-c: #f2c14e;
+        --room-shadow: #5a3a1c33;
+        --room-hover-ring: #b8791f40;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -201,6 +229,30 @@ const CATEGORY_LABEL: Record<string, string> = {
              value since it has to hold up against a dark surface instead. */
           --party-accent: #e8a33d;
           --party-glow: #e8a33d1a;
+          /* the same room at night: indigo wall, dim boards, lamp and
+             string-flags as the warm points of light */
+          --room-wall: #2d3156;
+          --room-wall-stripe: #292d4f;
+          --room-floor: #3b3558;
+          --room-floor-line: #302b4a;
+          --room-trim: #1d1f33;
+          --room-rug: #a4506a;
+          --room-rug-edge: #6d4a6e;
+          --room-sofa: #3f8a90;
+          --room-sofa-dark: #2f6b72;
+          --room-sky: #1b2552;
+          --room-sun: #e8e2c8;
+          --room-curtain: #8a4f78;
+          --room-lamp: #e8a33d;
+          --room-lamp-glow: #e8a33d38;
+          --room-flag-a: #e66767;
+          --room-flag-b: #5a96ec;
+          --room-flag-c: #4db8a4;
+          --room-balloon-a: #e66767;
+          --room-balloon-b: #5a96ec;
+          --room-balloon-c: #e8a33d;
+          --room-shadow: #0a0b1466;
+          --room-hover-ring: #e8a33d4d;
         }
       }
       * {
@@ -624,35 +676,233 @@ const CATEGORY_LABEL: Record<string, string> = {
          dropzone (the one child whose content can actually grow, as more
          guests join) gets an explicit 0 floor instead. */
       .party-room-dropzone {
+        position: relative;
         flex: 1;
         min-width: 0;
-        min-height: 4.5rem;
+        /* tall enough for the wall's furniture and a row of guests
+           standing on the floor */
+        min-height: 9.5rem;
         display: flex;
-        align-items: flex-start;
-        flex-wrap: wrap;
-        gap: 0.6rem;
-        padding: 0.6rem;
-        border: 2px dashed var(--party-accent);
-        border-radius: 1rem;
-        background: var(--party-glow);
+        align-items: flex-end;
+        padding: 0.5rem 0.6rem 0.6rem;
+        border: 2px solid var(--party-accent);
+        border-radius: 0.9rem;
+        overflow: hidden;
+        /* the back wall: soft vertical wallpaper stripes */
+        background: repeating-linear-gradient(90deg, var(--room-wall) 0 22px, var(--room-wall-stripe) 22px 44px);
         transition:
           border-color 0.15s ease,
-          background 0.15s ease;
+          box-shadow 0.15s ease;
       }
       .party-room-dropzone.drag-over {
         border-color: var(--ink);
-        border-style: solid;
-        background: var(--bg);
+        box-shadow:
+          0 0 0 4px var(--room-hover-ring),
+          inset 0 0 0 3px var(--room-lamp-glow);
+      }
+      /* --- the room's set dressing. One absolutely-positioned layer behind
+         the guests; every piece is positioned off the room's own edges (the
+         floor is anchored to the bottom), so the room can grow taller when
+         guests wrap onto a second row without the furniture drifting. These
+         are all server-rendered (never built by party-dom.ts), so plain
+         scoped CSS is enough. pointer-events:none so the layer never eats a
+         drag. */
+      .room-scene {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .room-scene svg {
+        position: absolute;
+        display: block;
+        overflow: visible;
+      }
+      .room-floor {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 4.1rem;
+        border-top: 5px solid var(--room-trim);
+        background:
+          repeating-linear-gradient(90deg, transparent 0 47px, var(--room-floor-line) 47px 49px),
+          var(--room-floor);
+      }
+      .room-rug {
+        position: absolute;
+        left: 18%;
+        right: 18%;
+        bottom: 0.35rem;
+        height: 2.4rem;
+        border-radius: 50%;
+        background: var(--room-rug);
+        box-shadow: inset 0 0 0 4px var(--room-rug-edge);
+        opacity: 0.9;
+      }
+      .room-bunting {
+        top: 0;
+        left: 0;
+      }
+      .room-cord {
+        stroke: var(--room-trim);
+      }
+      .room-flag-a {
+        fill: var(--room-flag-a);
+      }
+      .room-flag-b {
+        fill: var(--room-flag-b);
+      }
+      .room-flag-c {
+        fill: var(--room-flag-c);
+      }
+      .room-window {
+        left: 9%;
+        top: 1.6rem;
+        width: 3.4rem;
+      }
+      .room-trim-fill {
+        fill: var(--room-trim);
+      }
+      .room-trim-line {
+        stroke: var(--room-trim);
+      }
+      .room-sky-fill {
+        fill: var(--room-sky);
+      }
+      .room-sun-fill {
+        fill: var(--room-sun);
+      }
+      .room-hill-fill {
+        fill: var(--room-flag-c);
+        opacity: 0.55;
+      }
+      .room-curtain-fill {
+        fill: var(--room-curtain);
+      }
+      .room-balloons {
+        right: 22%;
+        top: 1.7rem;
+        width: 2.6rem;
+      }
+      .room-balloon-a {
+        fill: var(--room-balloon-a);
+      }
+      .room-balloon-b {
+        fill: var(--room-balloon-b);
+      }
+      .room-balloon-c {
+        fill: var(--room-balloon-c);
+      }
+      .room-shine {
+        fill: #ffffff;
+        opacity: 0.45;
+      }
+      .room-sofa {
+        left: 30%;
+        bottom: 3.3rem;
+        width: 6.2rem;
+      }
+      .room-sofa-back {
+        fill: var(--room-sofa-dark);
+      }
+      .room-sofa-arm {
+        fill: var(--room-sofa);
+      }
+      .room-sofa-seat {
+        fill: var(--room-sofa);
+        stroke: var(--room-sofa-dark);
+        stroke-width: 1.5;
+      }
+      .room-lamp-glow {
+        position: absolute;
+        right: 1%;
+        bottom: 2rem;
+        width: 6rem;
+        height: 6rem;
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--room-lamp-glow), transparent 70%);
+      }
+      .room-lamp {
+        right: 4%;
+        bottom: 2.6rem;
+        width: 1.9rem;
+      }
+      .room-lamp-fill {
+        fill: var(--room-lamp);
+      }
+      /* phone width: the dropzone is only ~250px wide, so thin the set
+         dressing out rather than cram everything in --- guests need the
+         floor more than the room needs a sofa. */
+      @media (max-width: 520px) {
+        .room-sofa,
+        .room-balloons {
+          display: none;
+        }
+        .room-window {
+          left: 6%;
+        }
       }
       .party-room-guests {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        min-width: 0;
         display: flex;
         flex-wrap: wrap;
-        gap: 0.6rem;
+        align-items: flex-end;
+        gap: 0.3rem 0.5rem;
+      }
+      /* in-room guests stand on the floor: a soft shadow under each avatar,
+         and a name tag in its own card-coloured pill so the name never has
+         to be read straight off the rug or floorboards (contrast comes from
+         --ink on --card, not the room paint). :global() since guests are
+         built client-side by party-dom.ts. */
+      .party-room-guests :global(.party-avatar-circle) {
+        box-shadow: 0 0.35rem 0 -0.1rem var(--room-shadow);
+      }
+      .party-room-dropzone :global(.party-guest-name) {
+        padding: 0 0.35rem;
+        border-radius: 0.6rem;
+        background: var(--card);
+        color: var(--ink);
+        border: 1px solid var(--border);
+        line-height: 1.25;
       }
       .party-room-empty {
-        align-self: center;
+        position: absolute;
+        z-index: 1;
+        left: 50%;
+        bottom: 1.1rem;
+        transform: translateX(-50%);
+        max-width: calc(100% - 1rem);
+        padding: 0.15rem 0.7rem;
+        border-radius: 1rem;
+        background: var(--card);
+        color: var(--ink);
+        border: 1px solid var(--border);
         font-size: 0.8rem;
-        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .party-room-empty[hidden] {
+        display: none;
+      }
+      /* phone width, continued: slimmer standing chips so ~5 guests fit on
+         the one floor row of a ~250px-wide room (a 6th wraps, which is
+         fine). After the base rules above so the overrides win on order. */
+      @media (max-width: 520px) {
+        .party-room-guests {
+          gap: 0.3rem 0.25rem;
+        }
+        .party-room-guests :global(.party-guest) {
+          width: 2.5rem;
+        }
+        .party-room-guests :global(.party-avatar-circle) {
+          width: 2rem;
+          height: 2rem;
+        }
       }
       /* a chip is the avatar circle plus its name, stacked --- the shared
          layout for both #party-you (always SSR-rendered) and every in-room
@@ -1160,6 +1410,57 @@ const CATEGORY_LABEL: Record<string, string> = {
                   <span class="party-guest-name">you</span>
                 </span>
                 <div class="party-room-dropzone" id="party-room-dropzone">
+                  {/* the room itself: pure decoration, pointer-events:none, so the
+                      whole dropzone box stays the drop target (party-drag.ts
+                      hit-tests the dropzone's rect, not these shapes) */}
+                  <div class="room-scene" aria-hidden="true">
+                    <div class="room-floor"></div>
+                    <div class="room-rug"></div>
+                    <svg class="room-bunting" width="100%" height="26">
+                      <defs>
+                        <pattern id="room-flags" width="90" height="26" patternUnits="userSpaceOnUse">
+                          <path d="M0 4 Q45 20 90 4" fill="none" class="room-cord" stroke-width="1.5" />
+                          <path d="M8 6.6 L28 10.8 L18 24 Z" class="room-flag-a" />
+                          <path d="M35 11.6 L55 11.6 L45 25 Z" class="room-flag-b" />
+                          <path d="M62 10.8 L82 6.6 L72 24 Z" class="room-flag-c" />
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="26" fill="url(#room-flags)" />
+                    </svg>
+                    <svg class="room-window" viewBox="0 0 60 70">
+                      <rect x="10" y="4" width="40" height="50" rx="3" class="room-trim-fill" />
+                      <rect x="14" y="8" width="32" height="42" rx="1.5" class="room-sky-fill" />
+                      <circle cx="37" cy="21" r="6" class="room-sun-fill" />
+                      <path d="M14 50 L14 40 Q22 33 30 40 Q38 33 46 40 L46 50 Z" class="room-hill-fill" />
+                      <path d="M30 8 V50 M14 29 H46" class="room-trim-line" stroke-width="2.5" />
+                      <path d="M4 3 H18 Q16 28 18 56 H4 Z" class="room-curtain-fill" />
+                      <path d="M56 3 H42 Q44 28 42 56 H56 Z" class="room-curtain-fill" />
+                      <rect x="6" y="54" width="48" height="5" rx="2" class="room-trim-fill" />
+                    </svg>
+                    <svg class="room-balloons" viewBox="0 0 54 80">
+                      <path d="M16 30 Q22 55 27 76 M38 28 Q32 55 27 76 M27 22 Q26 50 27 76" fill="none" class="room-cord" stroke-width="1" />
+                      <ellipse cx="16" cy="20" rx="10" ry="12" class="room-balloon-a" />
+                      <ellipse cx="38" cy="18" rx="10" ry="12" class="room-balloon-b" />
+                      <ellipse cx="27" cy="12" rx="10" ry="12" class="room-balloon-c" />
+                      <ellipse cx="23" cy="8" rx="2.5" ry="3.5" class="room-shine" />
+                      <ellipse cx="12" cy="16" rx="2.2" ry="3" class="room-shine" />
+                      <ellipse cx="34" cy="14" rx="2.2" ry="3" class="room-shine" />
+                    </svg>
+                    <svg class="room-sofa" viewBox="0 0 100 46">
+                      <rect x="8" y="4" width="84" height="26" rx="10" class="room-sofa-back" />
+                      <rect x="0" y="18" width="20" height="24" rx="8" class="room-sofa-arm" />
+                      <rect x="80" y="18" width="20" height="24" rx="8" class="room-sofa-arm" />
+                      <rect x="16" y="22" width="68" height="16" rx="6" class="room-sofa-seat" />
+                      <rect x="8" y="40" width="5" height="6" rx="1" class="room-trim-fill" />
+                      <rect x="87" y="40" width="5" height="6" rx="1" class="room-trim-fill" />
+                    </svg>
+                    <div class="room-lamp-glow"></div>
+                    <svg class="room-lamp" viewBox="0 0 34 90">
+                      <path d="M9 4 H25 L31 28 H3 Z" class="room-lamp-fill" />
+                      <rect x="15.5" y="28" width="3" height="52" class="room-trim-fill" />
+                      <ellipse cx="17" cy="82" rx="11" ry="4.5" class="room-trim-fill" />
+                    </svg>
+                  </div>
                   <span class="party-room-empty" id="party-room-empty" hidden={initialPartyGuests.length > 0}>
                     no one's in the room yet
                   </span>
