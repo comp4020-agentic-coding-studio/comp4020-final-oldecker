@@ -551,3 +551,69 @@ party room over SSE, at 1920x1080 and 390x844, light and dark, with no
 horizontal overflow and no console errors. A legacy `bunyip` row still renders
 as its creature. `POST /api/avatar` returns 401 with no cookie and 400 for
 garbage, wrong-shape, out-of-range, 50KB and JSON-bodied requests.
+
+## Real accounts: who you are is now something the server checks
+
+Until now "identity" was a name and an avatar picked once, and the cookie
+was the raw `people.id`. That was fine for a trusted link, and it had one
+real hole: the party room's avatars carry `data-person-id` in the page HTML,
+so every id on the board was public to everyone on the board. Copy a
+friend's id into your own `person_id` cookie and `currentPerson()` would
+cheerfully hand you *their* identity --- post as them, delete their posts,
+water as them --- with nothing in the audit log to say it wasn't them. The
+party room's "you can only touch your own row" check was sound, but it was
+only ever as strong as the cookie underneath it, and that cookie was
+forgeable by design.
+
+**What's checked, and where:** `currentPerson(cookies)` in
+`src/lib/identity.ts` still sits at the top of every route, unchanged for
+callers, but it now resolves differently. The `session` cookie holds 32
+random bytes (not an id), the `sessions` table stores only the SHA-256 of
+that token, and the lookup joins `sessions` to `people` and rejects an
+expired row. Nothing about a person is guessable from, or derivable from,
+anything that appears in the HTML. The old `person_id` cookie is simply never
+read any more, so every cookie issued before this change stopped working the
+moment it shipped --- which is also the intended "fresh start": people sign
+up again, with a password. `spec/auth.test.ts` checks the forgery directly:
+it signs up a victim, scrapes their id out of the board HTML, and tries it as
+both `person_id` and `session`; both come back 401.
+
+**Passwords:** hashed with Node's built-in `crypto.scrypt`, a random 16-byte
+salt per password, compared with `timingSafeEqual`. The cost parameters are
+stored inside each hash string, so raising them later doesn't lock anyone
+out. Logging in as a name that doesn't exist still runs a full scrypt
+against a throwaway hash, so "no such person" and "wrong password" are the
+same answer *and* the same speed. Names are unique ignoring case through a
+`name_key` column (lower-cased, whitespace-collapsed) with a unique index.
+SQLite can't add a UNIQUE constraint with `ALTER TABLE`, and an index over a
+nullable column treats NULLs as distinct, which is exactly what let the
+migration run on top of production: old rows, including any duplicate names,
+have `name_key` and `password_hash` NULL, so they're untouched, still render
+as post authors, and can never be logged into.
+
+**Brute-force limit:** five failed logins per name, or twenty per IP, in any
+ten minutes, then a "wait a few minutes" message --- even for the right
+password, until the window clears. In memory (`src/lib/ratelimit.ts`),
+because there's exactly one machine; a restart forgets the counts, which
+costs an attacker at most one window of guesses. The cost is that someone
+who knows a friend's name can lock them out for ten minutes by failing on
+purpose. For fifteen people I'd rather that than unlimited guessing at one
+account, and it heals itself. The IP comes from Fly's `Fly-Client-IP` header
+(Fly overwrites any client-supplied copy); the socket address is only the
+proxy there.
+
+**Deliberately not built:** password reset by email (no email is collected
+yet; the login page says to ask the group admin), and rooms (accounts hang
+off `people`, sessions off people, so a room table can reference `people`
+later without touching any of this). Logout is `POST` only, so no stray
+image tag can log you out, and it ends just that browser's session.
+
+**How it was verified:** against a scratch database built from the five
+previous migrations with two legacy people sharing a name and two legacy
+posts, then the new build started on top. The migration applied cleanly,
+both old posts still rendered, a `person_id` cookie for a legacy id got the
+signed-out landing page, and the full spec passed. A throwaway Playwright
+script then did the real path in fresh contexts at 1920x1080 and 390x844, in
+light and dark: root to signup, a mismatched-password error shown inline,
+sign up, post, log out, a second context getting the wrong-password error
+and then logging in and seeing the same post.

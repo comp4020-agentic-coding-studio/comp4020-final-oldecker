@@ -1,8 +1,7 @@
 ---
 import { and, desc, eq } from "drizzle-orm";
 import { activityLevel } from "../lib/activity";
-import AvatarEditor from "../components/AvatarEditor.astro";
-import { randomFace, renderAvatarSvg, serializeFace } from "../lib/face";
+import { renderAvatarSvg } from "../lib/face";
 import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../lib/canvas";
 import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../lib/canvas-meta";
 import { db } from "../lib/db";
@@ -1257,16 +1256,53 @@ const CATEGORY_LABEL: Record<string, string> = {
         font-size: 0.75rem;
       }
 
-      /* --- join form ------------------------------------------------- */
-      .join {
+      /* --- signed out: landing + signed in: session bar ---------------- */
+      .landing {
         display: grid;
         gap: 0.8rem;
         max-width: 320px;
         margin: 3rem auto;
         text-align: center;
       }
-      .join:has([data-avatar-editor]) {
-        max-width: 420px;
+      .landing p {
+        margin: 0;
+        opacity: 0.7;
+      }
+      .landing-actions {
+        display: grid;
+        gap: 0.6rem;
+        margin-top: 0.6rem;
+      }
+      .landing-actions a {
+        padding: 0.6rem 1.2rem;
+        border-radius: 999px;
+        border: 1px solid var(--ink);
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .landing-actions a.primary {
+        background: var(--ink);
+        color: var(--bg);
+      }
+      .session-bar {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 0.6rem;
+        margin: 0 0 0.5rem;
+        font-size: 0.8rem;
+      }
+      .session-bar span {
+        opacity: 0.7;
+      }
+      .session-bar button {
+        padding: 0.2rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
       }
       .edit-avatar-link {
         display: inline-block;
@@ -1340,14 +1376,20 @@ const CATEGORY_LABEL: Record<string, string> = {
     <main>
       {
         !person ? (
-          <form class="join" method="post" action="/api/join">
-            <h1>pick a name and a mate</h1>
-            <input name="name" placeholder="your name" maxlength="40" required autofocus />
-            <AvatarEditor value={serializeFace(randomFace())} />
-            <button type="submit">join the board</button>
-          </form>
+          <section class="landing">
+            <h1>the board</h1>
+            <p>A little shared space for the group. Log in, or make an account if you're new.</p>
+            <div class="landing-actions">
+              <a class="primary" href="/signup">sign up</a>
+              <a href="/login">log in</a>
+            </div>
+          </section>
         ) : (
           <>
+            <form class="session-bar" method="post" action="/api/logout">
+              <span>{person.name}</span>
+              <button type="submit">log out</button>
+            </form>
             <div class="presence" id="presence" aria-live="polite">
               {initialPresence.length === 0 ? (
                 <span class="presence-empty">no one else here right now</span>

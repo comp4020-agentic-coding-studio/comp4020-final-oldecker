@@ -1,4 +1,5 @@
 import { expect, inject, it } from "vitest";
+import { signup, uniqueName } from "./auth-helpers";
 
 // The wall's per-person placement cooldown is enforced server-side and gets
 // shorter with (private) activity. Each test joins a fresh person, so the
@@ -6,15 +7,9 @@ import { expect, inject, it } from "vitest";
 const baseUrl = inject("baseUrl");
 const origin = new URL(baseUrl).origin;
 
-async function join(name: string): Promise<string> {
-  const res = await fetch(new URL("/api/join", baseUrl), {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", origin },
-    body: new URLSearchParams({ name, avatar: "bunyip" }),
-    redirect: "manual",
-  });
-  expect(res.status).toBe(303);
-  return res.headers.get("set-cookie")!.split(";")[0];
+// Usernames are unique now, so each run needs fresh names.
+function join(prefix: string): Promise<string> {
+  return signup(baseUrl, uniqueName(prefix));
 }
 
 function place(cookie: string, x: number): Promise<Response> {
