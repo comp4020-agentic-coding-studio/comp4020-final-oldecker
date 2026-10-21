@@ -6,6 +6,8 @@
 // membership before sending anything.
 import type { PlantStage } from "../lib/plant-art";
 import { PALETTE } from "../lib/canvas";
+import type { Sleeper } from "../lib/bedroom";
+import { applyBedroomPresence, applyMemberJoined } from "./bedroom-dom";
 import { applyCanvasName } from "./canvas-dom";
 import { source } from "./house-events";
 import {
@@ -16,6 +18,7 @@ import {
   type PartyGuest,
   type PresenceEntry,
 } from "./party-dom";
+import { receiveLieb, type LiebItem } from "./lieb";
 import { applyPlantHealth, applyPlantName } from "./plant-dom";
 import { pourIntoPlant } from "./water-pour";
 
@@ -33,7 +36,20 @@ const ownPersonId = document.querySelector<HTMLElement>("#party-you")?.dataset.p
 
 
 source.addEventListener("presence", (e) => {
-  applyPresence((JSON.parse((e as MessageEvent).data) as { here: PresenceEntry[] }).here, ownPersonId);
+  const { here } = JSON.parse((e as MessageEvent).data) as { here: PresenceEntry[] };
+  applyPresence(here, ownPersonId);
+  // the bedroom reads the same event: present = awake, everyone else asleep
+  applyBedroomPresence(here);
+});
+
+source.addEventListener("member_joined", (e) => {
+  applyMemberJoined(JSON.parse((e as MessageEvent).data) as Sleeper);
+});
+
+// Only ever arrives on THIS person's own stream (events.ts's sendToPerson):
+// a heart someone just sent you.
+source.addEventListener("lieb", (e) => {
+  receiveLieb(JSON.parse((e as MessageEvent).data) as LiebItem);
 });
 
 source.addEventListener("watered", (e) => {

@@ -8,6 +8,18 @@
 const CANBERRA_TZ = "Australia/Canberra";
 const WEEKDAY_INDEX: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
+// Today's date in Canberra as "YYYY-MM-DD" --- the "day" the lieb limit
+// (once per sender -> recipient per day, src/lib/lieb.ts) counts in. en-CA
+// formats dates ISO-style, so this needs no assembling by hand.
+export function canberraDay(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: CANBERRA_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
 export function mostRecentCanberraMonday(now: Date = new Date()): number {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: CANBERRA_TZ,

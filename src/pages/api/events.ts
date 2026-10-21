@@ -9,7 +9,14 @@
 // opens; a non-member gets a 403 and never subscribes, so they can't learn
 // who's in a house, or watch its plant, by holding a stream open.
 import type { APIRoute } from "astro";
-import { markAbsent, markPresent, presenceSnapshot, subscribe, type LiveEvent } from "../../lib/events";
+import {
+  markAbsent,
+  markPresent,
+  presenceSnapshot,
+  subscribe,
+  subscribeHousePerson,
+  type LiveEvent,
+} from "../../lib/events";
 import { houseAccess } from "../../lib/houses";
 import { pendingKnocks } from "../../lib/knocks";
 import { partyRoomSnapshot } from "../../lib/party";
@@ -39,7 +46,15 @@ export const GET: APIRoute = ({ cookies, url }) => {
       // yet when it fired. It gets its own up-to-date snapshot explicitly,
       // right after.
       markPresent(house.id, person.id, person.name, person.avatar);
-      unsubscribe = subscribe(house.id, send);
+      const offHouse = subscribe(house.id, send);
+      // ...and this person's own private channel in this house (a heart
+      // someone sends them --- src/lib/lieb.ts), which no one else's stream
+      // is subscribed to.
+      const offPersonal = subscribeHousePerson(house.id, person.id, send);
+      unsubscribe = () => {
+        offHouse();
+        offPersonal();
+      };
       send({ type: "presence", data: { here: presenceSnapshot(house.id) } });
       // Same reasoning as the presence snapshot above --- a fresh
       // connection shouldn't wait on the next party_joined/party_left

@@ -837,3 +837,103 @@ C's street tells them; C knocks again and then stops waiting, and A's page
 says so. No page scrolls sideways at either width. The screenshots caught
 one thing worth fixing: the door's little "knock knock" labels spilled over
 the text beside them, so they now sit on the door's edge.
+
+## The bedroom, and ich hab dich lieb
+
+**The "← street" link is gone.** The house bar is now just the house's name,
+invite and log out. The only way out is the open door at the end of the
+corridor, which is a link as well as a drop target, so tapping still works.
+With nothing on the left anymore, the bar is a three-column grid on a wide
+screen (an empty column as wide as the buttons, so the name sits dead
+centre). On a phone it's two columns, name left and buttons right, so the
+name isn't squeezed down to an ellipsis to keep things symmetrical.
+
+**The bedroom** is a third room in the house map, full width under the
+corridor and the party room: a lavender room with a night window and a row
+of bunk beds, and a bunk for **every member of the house, online or not**.
+The corridor answers "who's here right now"; the bedroom answers "who lives
+here", which until now the page never showed anywhere. Two people to a bed,
+bottom bunk first, in the order they moved in, so nobody swaps beds when
+someone else comes online. Whoever has the house open is awake: sitting up a
+little, a warm ring round their face, their name in bold. Everyone else is
+asleep: dimmed, tilted into the pillow, a small "zz" rising. One member gets
+one bed with the top bunk made but empty; fifteen get eight beds that wrap
+into rows (three across at 390px, five on a laptop). The whole bed is drawn
+in one unit (`--u`), so the phone layout is one variable, not a dozen
+overrides. It gets no channel of its own. It reads the same per-house
+`presence` events the corridor already does (present means awake), plus one
+new house-wide event, `member_joined`, which `addMember()` broadcasts so a
+new bunk appears without a reload. The beds are built by one function,
+`bedroomHtml()` in `src/lib/bedroom.ts`, for both the server's first render
+and every live rebuild, so the two can't drift. They're styled from a global
+stylesheet (`src/styles/bedroom.css`), because the browser rebuilds them and
+Astro's scoped CSS never reaches client-built elements --- the bug that's
+already bitten this page twice.
+
+**Ich hab dich lieb.** Double-click (or double-tap) anyone else's avatar ---
+in the corridor, the party room or a bunk --- and they get a heart. If they
+have the house open it arrives live: hearts float up off their own face and
+a toast says "Anna hat dich lieb ❤". If they don't, it's stored, and the
+next time they open that house it greets them the same way, with "· 2h ago"
+on the toast. Then it's marked seen, so it never comes round twice. Storage is a new
+table, `lieb_messages` (house, from, to, day, created, seen); the migration
+only adds that table and two indexes, nothing on any existing table.
+
+Three decisions, settled with Ole before building:
+
+- **Private, so delivery is targeted.** A heart is between two people. The
+  easy build was a house-wide broadcast with a "this one's for Ben" field the
+  page filters on, but that puts every heart on every member's wire, readable
+  in anyone's devtools. Instead `src/lib/events.ts` grew a second channel per
+  (house, person), and `/api/events` subscribes each stream to the house's
+  channel *and* its own person's. `sendToPerson()` emits on that one channel
+  only. The spec opens three members' streams, sends from A to B, and checks
+  that neither C's stream nor A's own ever sees it. A heart belongs to the
+  house it was sent in and waits there, not in whichever house you open next.
+- **Once per sender to recipient, per day.** The limit is what keeps it worth
+  something: a heart you can send fifty times an hour is a spam button, and
+  one a day is a small, deliberate thing. A second try that day gets "you
+  already told Ben today ❤", not an error. The limit is a unique index on
+  (from, to, Canberra date), and the insert is the check. A
+  check-then-insert would let two quick double-clicks (or two tabs) both see
+  "not yet today" before either wrote; the spec fires six at once and
+  exactly one lands. It's per pair, not per house, so sharing two houses
+  with someone doesn't mean two a day.
+- **Members only, and never yourself,** checked on the server: the sender
+  through `houseAccess()` like every route, the recipient with `isMember()`.
+  An unknown id and a real person who doesn't live here get the same 404, so
+  the route can't be used to ask whether someone exists.
+
+"Seen" needed one more step than expected. A heart delivered live to a tab in
+the background hasn't been *seen*, and a laptop with the house open in a tab
+all weekend would otherwise silently swallow every heart sent to it. So a
+live heart isn't marked seen when it's sent. The recipient's page shows it
+when the tab is actually visible, then confirms with `POST /api/lieb/seen`.
+A tab closed unread leaves it waiting for the next visit.
+
+The gesture is hand-rolled on `pointerdown`, not `dblclick`, because mobile
+browsers don't reliably turn a double-tap into a `dblclick`. Two presses on
+the same avatar within 380ms and 24px count as one double-tap. It can't
+fight the drag gesture because the two never share an avatar: only your own
+is draggable, and only other people's take a heart. A double-click on your
+own corridor chip is two taps to `drag.ts`, and taps were already not drops.
+Other people's avatars got `touch-action: manipulation`, so a double-tap
+doesn't also zoom the page.
+
+**Verified:** `pnpm typecheck` clean, and the spec (with the new
+`spec/lieb.test.ts`: once a day per pair, six at once land once, not to
+yourself, not to or from a non-member, waits in the right house, live to the
+recipient's stream only, an offline recipient sees it on their next load and
+not after, an unconfirmed live one still waits, the bedroom lists everyone
+with the right awake/asleep state, and a new member is announced) green
+twice in a row against a fresh build. Then a throwaway Playwright script at
+1920x1080 and 390x844 in light and dark: A double-clicks B in the corridor
+and B gets the hearts and toast live while a fourth member gets nothing; a
+second try gets the gentle refusal; a double-click in the party room and on
+an offline member's bunk both send; that member logs in later on a phone,
+gets "· just now", and on reload nothing repeats; a touch double-tap on a
+bunk sends; B closes the tab and falls asleep in A's bedroom; a new member
+gets a bunk live; and mouse drags into the party room and onto the street
+door, plus a touch drag on the phone, still work, while a double-click on
+your own avatar triggers neither a drop nor a heart. A one-member house and
+a fifteen-member house rendered without horizontal scroll at both widths.

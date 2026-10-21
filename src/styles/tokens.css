@@ -105,6 +105,34 @@
   --knock-door-dark: #3d7090;
   --knock-mat: #c9a572;
   --knock-mat-dark: #a8823f;
+  /* the bedroom: a dusky lavender room with a night window, wooden bunks
+     and four blanket colours the beds cycle through. Decorative paint; the
+     name tags sit on --card with --ink like everywhere else. --bed-awake is
+     the warm ring round an awake sleeper's head (3:1+ on --card, since it's
+     the one thing that carries "here right now"); --bed-z is the snore. */
+  --bed-wall: #ebe7f5;
+  --bed-wall-dot: #ddd7ee;
+  --bed-skirting: #b9a6cf;
+  --bed-floor: #cfae86;
+  --bed-floor-line: #bb9970;
+  --bed-frame: #9a6b45;
+  --bed-frame-dark: #7c5334;
+  --bed-sheet: #f6f1e7;
+  --bed-pillow: #fffdf8;
+  --bed-pillow-edge: #e2d8c6;
+  --bed-blanket-a: #5b7fa8;
+  --bed-blanket-b: #d96a5b;
+  --bed-blanket-c: #3fa08f;
+  --bed-blanket-d: #c98d2e;
+  --bed-night: #33407a;
+  --bed-moon: #f7e7a6;
+  --bed-star: #fff6d6;
+  --bed-awake: #c47f12;
+  --bed-awake-glow: #f2c14e55;
+  --bed-z: #6c63a8;
+  /* ich hab dich lieb */
+  --lieb: #e0485f;
+  --lieb-soft: #ffe3e8;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -197,6 +225,30 @@
     --knock-door-dark: #324f74;
     --knock-mat: #4a3f5e;
     --knock-mat-dark: #3a3150;
+    /* the bedroom with the lights off: the moon and the awake rings are
+       the warm points of light */
+    --bed-wall: #262a4a;
+    --bed-wall-dot: #2e3358;
+    --bed-skirting: #1d1f33;
+    --bed-floor: #3a3352;
+    --bed-floor-line: #2f2945;
+    --bed-frame: #6d5a7e;
+    --bed-frame-dark: #53435f;
+    --bed-sheet: #3b4261;
+    --bed-pillow: #a9b1d6;
+    --bed-pillow-edge: #7a83ad;
+    --bed-blanket-a: #3d5f8a;
+    --bed-blanket-b: #a4506a;
+    --bed-blanket-c: #3f8a90;
+    --bed-blanket-d: #9a7434;
+    --bed-night: #0f1330;
+    --bed-moon: #e8e2c8;
+    --bed-star: #e8e2c8;
+    --bed-awake: #e8a33d;
+    --bed-awake-glow: #e8a33d4d;
+    --bed-z: #a9b1d6;
+    --lieb: #f07088;
+    --lieb-soft: #3d2838;
   }
 }
 * {
