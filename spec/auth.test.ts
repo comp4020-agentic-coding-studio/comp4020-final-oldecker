@@ -1,15 +1,18 @@
 import { expect, inject, it } from "vitest";
-import { formPost, PASSWORD, sessionCookieOf, signup, uniqueName } from "./auth-helpers";
+import { createHouse, formPost, inHouse, PASSWORD, sessionCookieOf, signup, uniqueName } from "./auth-helpers";
 
 // The auth contract: real accounts, with sessions the server can revoke and
 // nobody can forge. "Logged in" is checked the way the app itself decides it:
-// /api/water answers 200 for a known person and 401 for anyone else.
+// building a house with no name answers 303 (back to the street with an
+// inline error) for a known person and 401 for anyone else --- the same
+// currentPerson() check every mutating route starts with, and it changes
+// nothing either way.
 const baseUrl = inject("baseUrl");
 
 async function isLoggedIn(cookie: string): Promise<boolean> {
-  const res = await formPost(baseUrl, "/api/water", {}, cookie);
-  expect([200, 401], "/api/water should answer 200 (known) or 401 (unknown)").toContain(res.status);
-  return res.status === 200;
+  const res = await formPost(baseUrl, "/api/houses", { name: "" }, cookie);
+  expect([303, 401], "/api/houses should answer 303 (known) or 401 (unknown)").toContain(res.status);
+  return res.status === 303;
 }
 
 it("signing up logs you in, with an opaque session cookie", async () => {
@@ -111,8 +114,9 @@ it("a raw person id as a cookie does not authenticate (the old scheme, and a for
   const cookie = await signup(baseUrl, name);
 
   // the victim's id is public: it's in the party-room markup once they join
-  await formPost(baseUrl, "/api/party/join", {}, cookie);
-  const html = await (await fetch(new URL("/", baseUrl), { headers: { cookie } })).text();
+  const slug = await createHouse(baseUrl, cookie);
+  await formPost(baseUrl, inHouse("/api/party/join", slug), {}, cookie);
+  const html = await (await fetch(new URL(`/h/${encodeURIComponent(slug)}`, baseUrl), { headers: { cookie } })).text();
   const id = html.match(/data-person-id="([0-9a-f-]{36})"/)?.[1];
   expect(id, "expected a person id in the board HTML to try forging with").toBeTruthy();
 

@@ -35,6 +35,31 @@ export function sessionCookieOf(res: Response): string | null {
   return pair === "session=" ? null : pair;
 }
 
+// Builds a house as `cookie` and returns its slug (the URL's /h/<slug>).
+// House names are unique, so each call uses a fresh one.
+export async function createHouse(baseUrl: string, cookie: string, prefix = "Spec House"): Promise<string> {
+  const res = await formPost(baseUrl, "/api/houses", { name: uniqueName(prefix) }, cookie);
+  const location = res.headers.get("location") ?? "";
+  if (res.status !== 303 || !location.startsWith("/h/")) {
+    throw new Error(`building a house should redirect into it, got ${res.status} ${location}`);
+  }
+  return decodeURIComponent(location.slice(3));
+}
+
+// The house's invite code, read off the house page the way a person would
+// (the "invite" panel's link).
+export async function inviteCodeOf(baseUrl: string, cookie: string, slug: string): Promise<string> {
+  const html = await (await fetch(new URL(`/h/${encodeURIComponent(slug)}`, baseUrl), { headers: { cookie } })).text();
+  const code = html.match(/data-path="\/join\/([^"]+)"/)?.[1];
+  if (!code) throw new Error("no invite link on the house page");
+  return code;
+}
+
+// A path with ?house=<slug> on it, for the house-scoped API routes.
+export function inHouse(path: string, slug: string): string {
+  return `${path}?${new URLSearchParams({ house: slug })}`;
+}
+
 // Signs up a new person and returns their session cookie ("session=...").
 export async function signup(baseUrl: string, name: string, avatar = "bunyip"): Promise<string> {
   const res = await formPost(baseUrl, "/api/signup", {
