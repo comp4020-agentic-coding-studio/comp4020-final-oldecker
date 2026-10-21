@@ -85,7 +85,7 @@ const HAIR_COLOUR_NAMES = ["black", "dark brown", "brown", "auburn", "ginger", "
 const OUTFITS = ["#2f6f9f", "#c1443b", "#3f7d3f", "#e3b23c", "#7a4bc2", "#2b2b33", "#ece6dc", "#d9619b"];
 const OUTFIT_NAMES = ["blue", "red", "green", "mustard", "purple", "black", "cream", "pink"];
 
-const HAIRSTYLE_NAMES = ["bald", "buzz", "short", "quiff", "long", "curly", "afro", "bun"];
+const HAIRSTYLE_NAMES = ["bald", "buzz", "short", "quiff", "long", "curly", "afro", "bun", "mullet"];
 const BROW_NAMES = ["none", "straight", "arched", "thick", "raised"];
 const EYE_NAMES = ["dots", "big", "happy", "sleepy", "wink", "tall"];
 const MOUTH_NAMES = ["smile", "grin", "neutral", "open", "smirk", "tongue", "sad"];
@@ -204,6 +204,8 @@ function hairBack(style: number, c: string): string {
         .join("");
     case 6: // afro
       return `<circle cx="32" cy="26" r="21.5" fill="${c}"/>`;
+    case 8: // mullet: the long back. Hidden behind the head above the ears, then flaring out under them and over the shoulders
+      return `<path d="M18 28 L18.5 38 C14 40 11.5 46 9.5 55 L16 52.5 L19 58 L25 53 L32 58 L39 53 L45 58 L48 52.5 L54.5 55 C52.5 46 50 40 45.5 38 L46 28Z" fill="${c}"/>`;
     case 7: // bun
       return `<circle cx="32" cy="9.5" r="6.5" fill="${c}"/>`;
     default:
@@ -227,6 +229,8 @@ function hairFront(style: number, c: string): string {
       return `<path d="M16.5 29 C16.5 17 47.5 17 47.5 29 C45 23.5 40 21 32 21 C24 21 19 23.5 16.5 29Z" fill="${c}"/>`;
     case 7: // bun: centre-parted cap
       return `<path d="M16.5 32 C14.5 11 49.5 11 47.5 32 C46 25 40.5 20.5 32 18.5 C23.5 20.5 18 25 16.5 32Z" fill="${c}"/>`;
+    case 8: // mullet: short, choppy top and fringe; ears stay clear
+      return `<path d="M16.5 31 C13.5 9 50.5 9 47.5 31 C46.5 26 44.5 23 41 21.5 C38 23.5 34 22.5 32 20.5 C29.5 23 24 23.5 21.5 21 C19.5 23.5 17.5 27 16.5 31Z" fill="${c}"/>`;
     default:
       return "";
   }
