@@ -7,7 +7,7 @@
 // not a container shared with .temp-emoji/.temp-strip/.temp-median-label (they're
 // siblings one level further up). An earlier version used parentElement
 // directly and silently found nothing once the slider moved to the side.
-import { emojiForScore, layoutDots, median, scoreToY } from "../lib/temperature";
+import { emojiForScore, glowFor, layoutDots, median, scoreToY } from "../lib/temperature";
 import { houseUrl } from "./house-context";
 
 for (const slider of document.querySelectorAll<HTMLInputElement>(".temp-slider")) {
@@ -16,6 +16,17 @@ for (const slider of document.querySelectorAll<HTMLInputElement>(".temp-slider")
   const emojiEl = container?.querySelector<HTMLElement>(".temp-emoji");
   const svg = container?.querySelector<SVGSVGElement>(".temp-strip");
   const medianLabel = container?.querySelector<HTMLElement>(".temp-median-label");
+  const card = slider.closest<HTMLElement>(".post");
+
+  // same glowFor() as the server's first paint, so a vote and a reload agree
+  function redrawGlow(scores: number[]): void {
+    if (!card) return;
+    const glow = glowFor(scores);
+    card.classList.toggle("glow-hot", glow.kind === "hot");
+    card.classList.toggle("glow-cold", glow.kind === "cold");
+    if (glow.kind) card.style.setProperty("--glow", String(glow.strength));
+    else card.style.removeProperty("--glow");
+  }
 
   const updateEmoji = () => {
     if (emojiEl) emojiEl.textContent = emojiForScore(Number(slider.value));
@@ -51,7 +62,11 @@ for (const slider of document.querySelectorAll<HTMLInputElement>(".temp-slider")
         method: "POST",
         body: new URLSearchParams({ score: slider.value }),
       });
-      if (res.ok) redrawStrip(((await res.json()) as { scores: number[] }).scores);
+      if (res.ok) {
+        const { scores } = (await res.json()) as { scores: number[] };
+        redrawStrip(scores);
+        redrawGlow(scores);
+      }
     } catch {
       // a dropped vote isn't worth interrupting anyone over; it just won't
       // show up in the strip (or count towards "extremest" sorting) until

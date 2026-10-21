@@ -17,6 +17,10 @@
   --temp-cold: #2a78d6;
   --temp-hot: #e34948;
   --temp-neutral-ink: #898781;
+  /* peak opacity of a strongly rated post's hot/cold halo --- scaled
+     down by --glow (0..1, see glowFor() in src/lib/temperature.ts). The
+     dark value is higher since a glow shows less against a dark surface. */
+  --glow-alpha: 60%;
   /* a warm amber for the party room specifically --- distinct from
      the cold/hot pair and the feeling/doing category tags, so it
      reads as its own, celebratory thing. #b8791f clears the 3:1 floor
@@ -163,6 +167,7 @@
     --temp-cold: #3987e5;
     --temp-hot: #e66767;
     --temp-neutral-ink: #565f89;
+    --glow-alpha: 85%;
     /* #e8a33d clears 3:1 against both --card (6.75:1) and --bg
        (7.93:1) here, comfortably --- lighter than the light-mode
        value since it has to hold up against a dark surface instead. */

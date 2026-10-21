@@ -28,7 +28,7 @@ import { MAX_NAME_LENGTH, plantHealth, plantName } from "../../lib/plant";
 import { plantSvgForStage } from "../../lib/plant-art";
 import { sweepExpiredPosts } from "../../lib/posts";
 import { auditLog, people, pixels, postImages, postScores, posts } from "../../lib/schema";
-import { emojiForScore, layoutDots, median, SCORE_MAX, SCORE_MIN, scoreToY } from "../../lib/temperature";
+import { emojiForScore, glowFor, layoutDots, median, SCORE_MAX, SCORE_MIN, scoreToY } from "../../lib/temperature";
 
 export const prerender = false;
 
@@ -151,7 +151,8 @@ const feedView = feed.map((post) => {
   const medianY = med === null ? null : scoreToY(med, STRIP_H);
   const medianEmoji = med === null ? "–" : emojiForScore(med);
   const medianTitle = med === null ? "no votes yet" : `median: ${Math.round(med)}`;
-  return { ...post, dots, stripLabel, medianY, medianEmoji, medianTitle, myScore: myScores[post.id] ?? 0 };
+  const glow = glowFor(scores);
+  return { ...post, dots, stripLabel, medianY, medianEmoji, medianTitle, glow, myScore: myScores[post.id] ?? 0 };
 });
 
 const health = plantHealth(house.id);
@@ -220,6 +221,9 @@ const myCanvasCooldown = cooldownRemaining(lastPixelPlace?.createdAt ?? null, my
 const canvasDisplayName = canvasName(house.id);
 
 const invitePath = `/join/${house.inviteCode}`;
+// Absolute for the first paint / no-JS case; src/scripts/invite.ts rebuilds
+// it from the browser's own origin, which is what actually gets copied.
+const inviteUrl = new URL(invitePath, Astro.url).toString();
 
 const CATEGORY_LABEL: Record<string, string> = {
   emotional: "feeling",
@@ -700,6 +704,12 @@ const CATEGORY_LABEL: Record<string, string> = {
       }
       .invite-panel p {
         margin: 0 0 0.5rem;
+      }
+      .invite-panel .invite-status {
+        margin: 0.4rem 0 0;
+        min-height: 1.2em;
+        font-size: 0.78rem;
+        opacity: 0.75;
       }
       .invite-row {
         display: flex;
@@ -1371,6 +1381,37 @@ const CATEGORY_LABEL: Record<string, string> = {
           border-left-color: #9ec6fa;
         }
       }
+      /* strongly rated posts glow hot or cold. --glow (0..1) is set inline
+         from glowFor() in src/lib/temperature.ts, server-side on first
+         paint and by src/scripts/temperature-slider.ts after a vote (hence
+         :global --- the class is toggled at runtime). Only the top/right/
+         bottom borders are tinted: border-left stays the category colour so
+         feeling vs doing still reads, and the halo is a box-shadow so the
+         card's own wash (.post-emotional/.post-practical) is untouched. */
+      .post:global(.glow-hot),
+      .post:global(.glow-cold) {
+        --glow-tone: var(--temp-hot);
+        border-top-color: color-mix(in srgb, var(--glow-tone) calc(var(--glow, 0) * 70%), var(--border));
+        border-right-color: color-mix(in srgb, var(--glow-tone) calc(var(--glow, 0) * 70%), var(--border));
+        border-bottom-color: color-mix(in srgb, var(--glow-tone) calc(var(--glow, 0) * 70%), var(--border));
+        box-shadow:
+          0 0 calc(var(--glow, 0) * 22px) calc(var(--glow, 0) * 2px)
+            color-mix(in srgb, var(--glow-tone) calc(var(--glow, 0) * var(--glow-alpha)), transparent),
+          0 0 calc(var(--glow, 0) * 4px) 0
+            color-mix(in srgb, var(--glow-tone) calc(var(--glow, 0) * var(--glow-alpha)), transparent);
+        transition:
+          box-shadow 0.4s ease,
+          border-color 0.4s ease;
+      }
+      .post:global(.glow-cold) {
+        --glow-tone: var(--temp-cold);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .post:global(.glow-hot),
+        .post:global(.glow-cold) {
+          transition: none;
+        }
+      }
       .post-main {
         flex: 1;
         min-width: 0; /* so a long image row/caption can't push the temp column off */
@@ -1585,9 +1626,10 @@ const CATEGORY_LABEL: Record<string, string> = {
             <div id="invite-panel" class="invite-panel" hidden>
               <p>Anyone with this link can join <strong>{house.name}</strong> straight away. Someone who types its name on the street knocks instead, and waits at the door until one of you lets them in.</p>
               <div class="invite-row">
-                <input id="invite-link" type="text" readonly value={invitePath} data-path={invitePath} aria-label="invite link" />
+                <input id="invite-link" type="text" readonly value={inviteUrl} data-path={invitePath} aria-label="invite link" />
                 <button type="button" id="invite-copy" class="pill">copy</button>
               </div>
+              <p id="invite-status" class="invite-status" role="status" aria-live="polite"></p>
             </div>
 
             <FrontDoorKnocks houseId={house.id} houseSlug={house.slug} />
@@ -1959,7 +2001,11 @@ const CATEGORY_LABEL: Record<string, string> = {
 
             <div class="feed">
               {feedView.map((post) => (
-              <article class={`post post-${post.category}`} data-post-id={post.id}>
+              <article
+                class={`post post-${post.category}${post.glow.kind ? ` glow-${post.glow.kind}` : ""}`}
+                data-post-id={post.id}
+                style={post.glow.kind ? `--glow:${post.glow.strength}` : undefined}
+              >
                 <div class="post-main">
                   <header>
                     <span class="avatar">
