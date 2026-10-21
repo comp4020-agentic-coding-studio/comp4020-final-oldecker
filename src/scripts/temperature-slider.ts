@@ -8,6 +8,7 @@
 // siblings one level further up). An earlier version used parentElement
 // directly and silently found nothing once the slider moved to the side.
 import { emojiForScore, layoutDots, median, scoreToY } from "../lib/temperature";
+import { houseUrl } from "./house-context";
 
 for (const slider of document.querySelectorAll<HTMLInputElement>(".temp-slider")) {
   const container = slider.closest<HTMLElement>(".post-temp");
@@ -46,7 +47,7 @@ for (const slider of document.querySelectorAll<HTMLInputElement>(".temp-slider")
   slider.addEventListener("change", async () => {
     if (!postId) return;
     try {
-      const res = await fetch(`/api/posts/${postId}/score`, {
+      const res = await fetch(houseUrl(`/api/posts/${postId}/score`), {
         method: "POST",
         body: new URLSearchParams({ score: slider.value }),
       });

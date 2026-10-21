@@ -5,6 +5,8 @@
 // decision as creating one (see PROCESS.md) --- so another open tab keeps
 // showing this post until it next reloads, which is this app's existing
 // reload-only trade-off, not a bug specific to deleting.
+import { houseUrl } from "./house-context";
+
 document.addEventListener("click", async (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>(".delete-post");
   if (!button) return;
@@ -17,7 +19,7 @@ document.addEventListener("click", async (event) => {
 
   button.disabled = true;
   try {
-    const res = await fetch(`/api/posts/${postId}/delete`, { method: "POST" });
+    const res = await fetch(houseUrl(`/api/posts/${postId}/delete`), { method: "POST" });
     if (res.ok) article.remove();
     else button.disabled = false;
   } catch {

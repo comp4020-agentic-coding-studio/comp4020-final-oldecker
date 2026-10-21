@@ -1,10 +1,13 @@
 ---
 import AuthLayout from "../layouts/AuthLayout.astro";
+import { safeNext } from "../lib/houses";
 import { currentPerson } from "../lib/identity";
 
 export const prerender = false;
 
-if (currentPerson(Astro.cookies)) return Astro.redirect("/");
+// Where to go after logging in, if a house or invite link sent you here.
+const next = safeNext(Astro.url.searchParams.get("next"));
+if (currentPerson(Astro.cookies)) return Astro.redirect(next ?? "/");
 
 const errorCode = Astro.url.searchParams.get("error");
 const name = Astro.url.searchParams.get("name") ?? "";
@@ -25,6 +28,7 @@ const error = errorCode ? (messages[errorCode] ?? null) : null;
 
   <form class="auth" method="post" action="/api/login">
     {error && <p class="error" role="alert">{error}</p>}
+    {next && <input type="hidden" name="next" value={next} />}
     <label class="field">
       <span>name</span>
       <input type="text" name="name" value={name} maxlength="30" autocomplete="username" required autofocus={!name} />
@@ -40,5 +44,5 @@ const error = errorCode ? (messages[errorCode] ?? null) : null;
     <p class="hint">Forgot your password? Ask the group admin for now.</p>
   </form>
 
-  <p class="alt">New here? <a href="/signup">Make an account</a></p>
+  <p class="alt">New here? <a href={next ? `/signup?${new URLSearchParams({ next })}` : "/signup"}>Make an account</a></p>
 </AuthLayout>

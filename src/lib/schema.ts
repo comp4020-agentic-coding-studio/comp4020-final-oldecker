@@ -30,11 +30,61 @@ export const people = sqliteTable(
     avatar: text("avatar").notNull(),
     passwordHash: text("password_hash"),
     nameKey: text("name_key"),
+    // Where "/" sends you after login: the house you last opened. A plain
+    // integer, not a foreign key --- nothing breaks if it dangles, because
+    // "/" re-checks membership before redirecting anywhere.
+    lastHouseId: integer("last_house_id"),
     createdAt: integer("created_at")
       .notNull()
       .default(sql`(unixepoch())`),
   },
   (table) => [uniqueIndex("people_name_key_unique").on(table.nameKey)],
+);
+
+// A house: one independent copy of everything shared --- its own feed,
+// plant, wall and party room (see PROCESS.md's "Houses" section). Accounts
+// and avatars are NOT per house; they're global and walk in and out of
+// every house their owner belongs to.
+//
+// slug is the house's identity in URLs (/h/<slug>) AND what "visit by name"
+// looks up: it's derived from the name (lower-cased, punctuation to dashes,
+// see src/lib/houses.ts), so two names that would read the same ("The
+// Board" / "the board!") can't both exist. inviteCode is a separate random
+// token for the /join/<code> link, so sharing a link doesn't mean spelling a
+// name out.
+export const houses = sqliteTable("houses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  inviteCode: text("invite_code").notNull().unique(),
+  // nullable: the first house was made by the migration, not by a person
+  createdBy: text("created_by").references(() => people.id),
+  createdAt: integer("created_at")
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Who may see and change a house. Checked on the server on every house page
+// and every API call (src/lib/houses.ts) --- a non-member gets a 403 and
+// none of the house's data. (house, person) is the key, so joining twice is
+// a no-op, same shape as party_guests.
+export const houseMembers = sqliteTable(
+  "house_members",
+  {
+    houseId: integer("house_id")
+      .notNull()
+      .references(() => houses.id),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id),
+    joinedAt: integer("joined_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.houseId, table.personId] }),
+    index("house_members_person_idx").on(table.personId),
+  ],
 );
 
 // One row per logged-in browser. `id` is the SHA-256 of the random token in
@@ -58,6 +108,9 @@ export const sessions = sqliteTable(
 
 export const posts = sqliteTable("posts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  houseId: integer("house_id")
+    .notNull()
+    .references(() => houses.id),
   authorId: text("author_id")
     .notNull()
     .references(() => people.id),
@@ -101,10 +154,17 @@ export const postScores = sqliteTable(
   (table) => [primaryKey({ columns: [table.postId, table.personId] })],
 );
 
-// A single row (id always 1): the plant's name, the one piece of shared
-// state anyone can rename. Not per-person --- there's one plant.
+// One row per house (once someone renames its plant): the plant's name, the
+// one piece of shared state anyone in the house can rename. A house with no
+// row here just shows the default name. houseId is unique rather than being
+// the key itself, so the migration could keep the pre-houses row (id 1)
+// as-is and simply tag it with the first house.
 export const plant = sqliteTable("plant", {
   id: integer("id").primaryKey(),
+  houseId: integer("house_id")
+    .notNull()
+    .unique()
+    .references(() => houses.id),
   name: text("name").notNull(),
   updatedAt: integer("updated_at")
     .notNull()
@@ -115,15 +175,22 @@ export const plant = sqliteTable("plant", {
 // query over this table (distinct waterers in the last 7 days), not a
 // stored counter --- nothing to keep in sync, nothing a missed write can
 // desync.
-export const waterings = sqliteTable("waterings", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  personId: text("person_id")
-    .notNull()
-    .references(() => people.id),
-  wateredAt: integer("watered_at")
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const waterings = sqliteTable(
+  "waterings",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    houseId: integer("house_id")
+      .notNull()
+      .references(() => houses.id),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id),
+    wateredAt: integer("watered_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("waterings_house_time_idx").on(table.houseId, table.wateredAt)],
+);
 
 // Append-only "who did what": every mutation in the app writes one row here
 // (see src/lib/audit.ts), which is both a durable DB trail and the source of
@@ -148,26 +215,33 @@ export const auditLog = sqliteTable(
   (table) => [index("audit_log_person_action_idx").on(table.personId, table.action, table.createdAt)],
 );
 
-// A single row (id always 1): the canvas's name, same renameable-by-anyone
-// shape as `plant` above --- kept in its own table rather than folded into
-// `plant` since the two are unrelated pieces of shared state that just
-// happen to share a UI pattern.
+// One row per house (once renamed): the canvas's name, same renameable-by-
+// anyone, unique-houseId shape as `plant` above --- kept in its own table
+// rather than folded into `plant` since the two are unrelated pieces of
+// shared state that just happen to share a UI pattern.
 export const canvasMeta = sqliteTable("canvas_meta", {
   id: integer("id").primaryKey(),
+  houseId: integer("house_id")
+    .notNull()
+    .unique()
+    .references(() => houses.id),
   name: text("name").notNull(),
   updatedAt: integer("updated_at")
     .notNull()
     .default(sql`(unixepoch())`),
 });
 
-// One row per cell of the shared pixel canvas (src/lib/canvas.ts) --- (x, y)
-// is the primary key, so placing over an existing pixel is an upsert, not a
+// One row per cell of each house's pixel canvas (src/lib/canvas.ts) ---
+// (house, x, y) is the primary key, so placing over an existing pixel is an upsert, not a
 // new row: the canvas is "what color is each cell right now", not a history
 // of every placement (the audit log already carries that, via pixel_place
 // rows, for anyone who wants it).
 export const pixels = sqliteTable(
   "pixels",
   {
+    houseId: integer("house_id")
+      .notNull()
+      .references(() => houses.id),
     x: integer("x").notNull(),
     y: integer("y").notNull(),
     colorIndex: integer("color_index").notNull(),
@@ -178,11 +252,11 @@ export const pixels = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => [primaryKey({ columns: [table.x, table.y] })],
+  (table) => [primaryKey({ columns: [table.houseId, table.x, table.y] })],
 );
 
-// Who's currently in the shared party room, and until when --- personId
-// IS the primary key (not a surrogate), so re-joining while already in is
+// Who's currently in each house's party room, and until when --- (house,
+// person) IS the primary key (not a surrogate), so re-joining while already in is
 // a plain upsert, which is exactly "re-adding refreshes your timer" rather
 // than a second row to dedupe. Persisted, not an in-memory Map like
 // events.ts's `present`: that Map is safe to lose on restart because its
@@ -192,12 +266,19 @@ export const pixels = sqliteTable(
 // process restarts specifically during the idle gaps between visits ---
 // exactly when no open tab would be there to silently repair an in-memory
 // wipe. See src/lib/party.ts.
-export const partyGuests = sqliteTable("party_guests", {
-  personId: text("person_id")
-    .primaryKey()
-    .references(() => people.id),
-  joinedAt: integer("joined_at")
-    .notNull()
-    .default(sql`(unixepoch())`),
-  expiresAt: integer("expires_at").notNull(),
-});
+export const partyGuests = sqliteTable(
+  "party_guests",
+  {
+    houseId: integer("house_id")
+      .notNull()
+      .references(() => houses.id),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id),
+    joinedAt: integer("joined_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.houseId, table.personId] })],
+);

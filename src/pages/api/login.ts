@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { eq } from "drizzle-orm";
 import { logAction } from "../../lib/audit";
 import { db } from "../../lib/db";
+import { safeNext } from "../../lib/houses";
 import { cleanName, MAX_PASSWORD_LENGTH, nameKeyOf, startSession } from "../../lib/identity";
 import { dummyVerify, verifyPassword } from "../../lib/password";
 import { checkLogin, recordFailedLogin, recordSuccessfulLogin } from "../../lib/ratelimit";
@@ -17,6 +18,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect, clientAddress
   const form = await request.formData();
   const name = cleanName(String(form.get("name") ?? ""));
   const password = String(form.get("password") ?? "");
+  const next = safeNext(String(form.get("next") ?? ""));
   const nameKey = nameKeyOf(name);
   // Fly's proxy sets Fly-Client-IP (and overwrites any client-sent copy);
   // the socket address is only ever the proxy there, so it's the fallback
@@ -24,7 +26,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect, clientAddress
   const ip = request.headers.get("fly-client-ip") ?? clientAddress ?? "unknown";
 
   const back = (error: string, extra?: Record<string, string>) =>
-    redirect(`/login?${new URLSearchParams({ error, name, ...extra })}`, 303);
+    redirect(`/login?${new URLSearchParams({ error, name, ...(next ? { next } : {}), ...extra })}`, 303);
 
   const gate = checkLogin(nameKey, ip);
   if (!gate.allowed) {
@@ -52,5 +54,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect, clientAddress
   recordSuccessfulLogin(nameKey);
   startSession(cookies, account.id);
   logAction(account, "login", `name=${account.name}`);
-  return redirect("/", 303);
+  // "/" forwards on to your last house (or the street); an invite or house
+  // link that sent you to log in first sends you back there instead.
+  return redirect(safeNext(next) ?? "/", 303);
 };

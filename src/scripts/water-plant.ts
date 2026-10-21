@@ -1,5 +1,6 @@
 // Your own plant actions: tapping the watering can, and renaming it.
 // Someone *else* doing either arrives through live.ts instead.
+import { houseUrl } from "./house-context";
 import { applyPlantHealth, applyPlantName } from "./plant-dom";
 import { pourIntoPlant } from "./water-pour";
 
@@ -10,7 +11,7 @@ can?.addEventListener("click", async () => {
   can.disabled = true;
   const pour = pourIntoPlant(); // starts immediately; runs alongside the request, not after it
   try {
-    const res = await fetch("/api/water", { method: "POST" });
+    const res = await fetch(houseUrl("/api/water"), { method: "POST" });
     if (res.ok) applyPlantHealth(await res.json());
   } finally {
     await pour;
@@ -46,7 +47,7 @@ renameForm?.addEventListener("submit", async (event) => {
   const name = renameInput?.value.trim();
   if (!name) return;
 
-  const res = await fetch("/api/plant/name", { method: "POST", body: new URLSearchParams({ name }) });
+  const res = await fetch(houseUrl("/api/plant/name"), { method: "POST", body: new URLSearchParams({ name }) });
   if (res.ok) applyPlantName((await res.json()).name);
   closeEditor();
 });

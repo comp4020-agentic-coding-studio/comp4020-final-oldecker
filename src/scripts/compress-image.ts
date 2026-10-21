@@ -43,7 +43,8 @@ form?.addEventListener("submit", async (event) => {
   try {
     const res = await fetch(form.action, { method: "POST", body: out });
     if (res.ok) {
-      window.location.href = "/";
+      // back to this house's board (the form's action carries ?house=)
+      window.location.href = `/h/${encodeURIComponent(document.body.dataset.house ?? "")}`;
       return;
     }
     const message = await res.text();

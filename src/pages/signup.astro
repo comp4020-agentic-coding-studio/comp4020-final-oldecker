@@ -2,11 +2,13 @@
 import AvatarEditor from "../components/AvatarEditor.astro";
 import AuthLayout from "../layouts/AuthLayout.astro";
 import { parseAvatar, randomFace, serializeFace } from "../lib/face";
+import { safeNext } from "../lib/houses";
 import { currentPerson, MAX_NAME_LENGTH, MIN_NAME_LENGTH, MIN_PASSWORD_LENGTH } from "../lib/identity";
 
 export const prerender = false;
 
-if (currentPerson(Astro.cookies)) return Astro.redirect("/");
+const next = safeNext(Astro.url.searchParams.get("next"));
+if (currentPerson(Astro.cookies)) return Astro.redirect(next ?? "/");
 
 const errorCode = Astro.url.searchParams.get("error");
 const name = Astro.url.searchParams.get("name") ?? "";
@@ -30,6 +32,7 @@ const error = errorCode ? (messages[errorCode] ?? null) : null;
 
   <form class="auth" method="post" action="/api/signup">
     {error && <p class="error" role="alert">{error}</p>}
+    {next && <input type="hidden" name="next" value={next} />}
     <label class="field">
       <span>name</span>
       <input
@@ -58,5 +61,5 @@ const error = errorCode ? (messages[errorCode] ?? null) : null;
     <button type="submit">make my account</button>
   </form>
 
-  <p class="alt">Already have an account? <a href="/login">Log in</a></p>
+  <p class="alt">Already have an account? <a href={next ? `/login?${new URLSearchParams({ next })}` : "/login"}>Log in</a></p>
 </AuthLayout>

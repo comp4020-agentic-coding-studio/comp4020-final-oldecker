@@ -1,19 +1,24 @@
-// The live channel: presence, the plant, the pixel canvas, and the party
-// room update without a reload, for every open tab --- posts and votes
-// still wait for one (see PROCESS.md for why that line is drawn where it
-// is). One EventSource per tab; the server side of this is
-// src/pages/api/events.ts.
+// The live channel for THIS house: who's in the corridor, the plant, the
+// pixel canvas, and the party room update without a reload, for every open
+// tab --- posts and votes still wait for one (see PROCESS.md for why that
+// line is drawn where it is). One EventSource per tab, subscribed to this
+// house only; the server side is src/pages/api/events.ts, which checks
+// membership before sending anything.
 import type { PlantStage } from "../lib/plant-art";
-import { renderAvatarSvg } from "../lib/face";
 import { PALETTE } from "../lib/canvas";
 import { applyCanvasName } from "./canvas-dom";
-import { applyPartyJoin, escapeHtml, applyPartyLeave, renderPartyRoom, type PartyGuest } from "./party-dom";
+import { houseUrl } from "./house-context";
+import {
+  applyPartyJoin,
+  applyPartyLeave,
+  applyPresence,
+  renderPartyRoom,
+  type PartyGuest,
+  type PresenceEntry,
+} from "./party-dom";
 import { applyPlantHealth, applyPlantName } from "./plant-dom";
 import { pourIntoPlant } from "./water-pour";
 
-interface PresenceEvent {
-  here: Array<{ name: string; avatar: string }>;
-}
 interface WateredEvent {
   stage: PlantStage;
   waterersThisWeek: number;
@@ -23,32 +28,13 @@ interface PixelEvent {
   y: number;
   colorIndex: number;
 }
-interface PartySnapshotEvent {
-  guests: PartyGuest[];
-}
 
 const ownPersonId = document.querySelector<HTMLElement>("#party-you")?.dataset.personId ?? "";
 
-const presenceEl = document.querySelector<HTMLElement>("#presence");
-
-function renderPresence(here: PresenceEvent["here"]): void {
-  if (!presenceEl) return;
-  if (here.length === 0) {
-    presenceEl.innerHTML = '<span class="presence-empty">no one else here right now</span>';
-    return;
-  }
-  presenceEl.innerHTML = here
-    .map((p) => {
-      const safeName = escapeHtml(p.name);
-      return `<span class="presence-guest" title="${safeName}"><span class="presence-avatar"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(p.avatar)}</svg></span><span class="presence-name">${safeName}</span></span>`;
-    })
-    .join("");
-}
-
-const source = new EventSource("/api/events");
+const source = new EventSource(houseUrl("/api/events"));
 
 source.addEventListener("presence", (e) => {
-  renderPresence((JSON.parse((e as MessageEvent).data) as PresenceEvent).here);
+  applyPresence((JSON.parse((e as MessageEvent).data) as { here: PresenceEntry[] }).here, ownPersonId);
 });
 
 source.addEventListener("watered", (e) => {
@@ -81,7 +67,7 @@ source.addEventListener("party_left", (e) => {
 });
 
 source.addEventListener("party_snapshot", (e) => {
-  renderPartyRoom((JSON.parse((e as MessageEvent).data) as PartySnapshotEvent).guests, ownPersonId);
+  renderPartyRoom((JSON.parse((e as MessageEvent).data) as { guests: PartyGuest[] }).guests, ownPersonId);
 });
 
 // A dropped connection (a laptop sleeping, a flaky network) shouldn't need

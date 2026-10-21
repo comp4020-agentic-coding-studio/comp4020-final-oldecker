@@ -1,0 +1,89 @@
+---
+// One little house front, hand-drawn flat SVG in the same style as the party
+// room's furniture: the street page lines these up in a row, and the invite
+// and door pages show one on its own. Paint comes from the --house-*
+// tokens (src/styles/tokens.css) so it follows light/dark mode; `paint`
+// picks one of four so neighbouring houses differ. `lit` turns the windows
+// on --- used for "someone's home right now".
+interface Props {
+  paint?: number;
+  lit?: boolean;
+  class?: string;
+}
+const { paint = 0, lit = false, class: className } = Astro.props;
+const p = ["a", "b", "c", "d"][((paint % 4) + 4) % 4];
+---
+
+<svg class:list={["house-front", className]} viewBox="0 0 120 120" aria-hidden="true" data-paint={p}>
+  <!-- chimney behind the roof -->
+  <rect x="78" y="14" width="12" height="26" class="hf-roof" />
+  <rect x="76" y="11" width="16" height="5" rx="1" class="hf-trim" />
+  <!-- walls -->
+  <rect x="18" y="50" width="84" height="64" class="hf-wall" />
+  <!-- roof -->
+  <path d="M10 54 L60 16 L110 54 Z" class="hf-roof" />
+  <path d="M10 54 L60 16 L110 54" fill="none" class="hf-trim-line" stroke-width="3" stroke-linejoin="round" />
+  <!-- attic round window -->
+  <circle cx="60" cy="38" r="6" class:list={["hf-glass", { "hf-lit": lit }]} />
+  <circle cx="60" cy="38" r="6" fill="none" class="hf-trim-line" stroke-width="2" />
+  <!-- two windows -->
+  <rect x="26" y="62" width="20" height="18" rx="2" class:list={["hf-glass", { "hf-lit": lit }]} />
+  <rect x="74" y="62" width="20" height="18" rx="2" class:list={["hf-glass", { "hf-lit": lit }]} />
+  <path d="M36 62 V80 M26 71 H46 M84 62 V80 M74 71 H94" class="hf-trim-line" stroke-width="1.6" />
+  <rect x="24" y="80" width="24" height="3" rx="1" class="hf-trim" />
+  <rect x="72" y="80" width="24" height="3" rx="1" class="hf-trim" />
+  <!-- door -->
+  <rect x="50" y="78" width="20" height="36" rx="9" class="hf-door" />
+  <circle cx="65" cy="97" r="1.6" class="hf-knob" />
+  <!-- step -->
+  <rect x="46" y="112" width="28" height="4" rx="1" class="hf-trim" />
+</svg>
+
+<style>
+  .house-front {
+    display: block;
+    overflow: visible;
+  }
+  .hf-wall {
+    fill: var(--house-a);
+  }
+  .hf-roof {
+    fill: var(--house-a-roof);
+  }
+  [data-paint="b"] .hf-wall {
+    fill: var(--house-b);
+  }
+  [data-paint="b"] .hf-roof {
+    fill: var(--house-b-roof);
+  }
+  [data-paint="c"] .hf-wall {
+    fill: var(--house-c);
+  }
+  [data-paint="c"] .hf-roof {
+    fill: var(--house-c-roof);
+  }
+  [data-paint="d"] .hf-wall {
+    fill: var(--house-d);
+  }
+  [data-paint="d"] .hf-roof {
+    fill: var(--house-d-roof);
+  }
+  .hf-trim {
+    fill: var(--room-trim);
+  }
+  .hf-trim-line {
+    stroke: var(--room-trim);
+  }
+  .hf-glass {
+    fill: var(--street-window);
+  }
+  .hf-lit {
+    fill: var(--street-window-lit);
+  }
+  .hf-door {
+    fill: var(--street-door);
+  }
+  .hf-knob {
+    fill: var(--room-lamp);
+  }
+</style>

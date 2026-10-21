@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { logAction } from "../../lib/audit";
 import { db } from "../../lib/db";
-import { currentPerson } from "../../lib/identity";
+import { houseAccess } from "../../lib/houses";
 import { postImages, posts } from "../../lib/schema";
 import { MAX_IMAGES_PER_POST, saveUpload, UploadRejected, writeUpload } from "../../lib/uploads";
 
@@ -9,11 +9,15 @@ export const prerender = false;
 
 const CATEGORIES = new Set(["emotional", "practical"]);
 
-export const POST: APIRoute = async ({ request, cookies, redirect }) => {
-  const person = currentPerson(cookies);
-  if (!person) return new Response("join first", { status: 401 });
+// Posts into one house: /api/posts?house=<slug> (the compose form's action
+// carries it), membership checked before a single byte is written.
+export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
+  const form = await request.formData().catch(() => null);
+  const access = houseAccess(cookies, url, form);
+  if (access instanceof Response) return access;
+  const { person, house } = access;
+  if (!form) return new Response("expected a form body", { status: 400 });
 
-  const form = await request.formData();
   const category = String(form.get("category") ?? "");
   const body = String(form.get("body") ?? "").trim();
   // <input name="images" multiple>: one field, several files.
@@ -37,13 +41,13 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
 
   const { id: postId } = db
     .insert(posts)
-    .values({ authorId: person.id, category, body })
+    .values({ houseId: house.id, authorId: person.id, category, body })
     .returning({ id: posts.id })
     .get();
 
   for (const [position, path] of names.entries())
     db.insert(postImages).values({ postId, path, position }).run();
 
-  logAction(person, "post_create", `id=${postId} category=${category}`);
-  return redirect("/", 303);
+  logAction(person, "post_create", `house=${house.slug} id=${postId} category=${category}`);
+  return redirect(`/h/${encodeURIComponent(house.slug)}`, 303);
 };

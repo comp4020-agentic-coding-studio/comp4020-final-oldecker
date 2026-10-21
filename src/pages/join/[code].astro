@@ -1,0 +1,48 @@
+---
+// An invite link. Opening it never changes anything by itself (a GET could
+// be fired by a link preview or an <img>); it shows the house and a "come
+// in" button that POSTs to /api/houses/join. Logged out: log in or sign up
+// first, then come back here.
+import DoorLayout from "../../layouts/DoorLayout.astro";
+import { houseByInviteCode, isMember } from "../../lib/houses";
+import { currentPerson } from "../../lib/identity";
+
+export const prerender = false;
+
+const code = Astro.params.code ?? "";
+const house = houseByInviteCode(code);
+const person = currentPerson(Astro.cookies);
+const back = new URLSearchParams({ next: `/join/${code}` });
+
+// Already a member: nothing to ask, just walk in.
+if (house && person && isMember(house.id, person.id)) return Astro.redirect(`/h/${encodeURIComponent(house.slug)}`);
+if (!house) Astro.response.status = 404;
+---
+
+<DoorLayout title={house ? `join ${house.name}` : "invite not found"} paint={house?.id ?? 0}>
+  {
+    !house ? (
+      <>
+        <h1>this invite doesn't open anything</h1>
+        <p>The link may be mistyped, or from a house that doesn't exist.</p>
+        <a class="door-link secondary" href="/">back to the board</a>
+      </>
+    ) : person ? (
+      <>
+        <h1>{house.name}</h1>
+        <p>You've been invited in. Join to see its board, plant, wall and party room.</p>
+        <form method="post" action="/api/houses/join">
+          <input type="hidden" name="code" value={code} />
+          <button type="submit">come in</button>
+        </form>
+      </>
+    ) : (
+      <>
+        <h1>{house.name}</h1>
+        <p>You've been invited in. Log in or make an account first, and you'll come straight back here.</p>
+        <a class="door-link" href={`/signup?${back}`}>sign up</a>
+        <a class="door-link secondary" href={`/login?${back}`}>log in</a>
+      </>
+    )
+  }
+</DoorLayout>

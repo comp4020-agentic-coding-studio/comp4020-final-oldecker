@@ -5,7 +5,8 @@ import { db } from "../../lib/db";
 import { broadcast, updatePresenceAvatar } from "../../lib/events";
 import { parseAvatar, serializeFace } from "../../lib/face";
 import { currentPerson } from "../../lib/identity";
-import { partyRoomSnapshot } from "../../lib/party";
+import { safeNext } from "../../lib/houses";
+import { partyHousesOf, partyRoomSnapshot } from "../../lib/party";
 import { people } from "../../lib/schema";
 
 export const prerender = false;
@@ -30,10 +31,14 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   db.update(people).set({ avatar }).where(eq(people.id, person.id)).run();
   logAction(person, "avatar_update", `avatar=${avatar}`);
 
-  // Show the new face live to anyone already looking at the board.
+  // Show the new face live in every house that's watching: each corridor
+  // you're standing in, and each party room you're in.
   updatePresenceAvatar(person.id, avatar);
-  const inRoom = partyRoomSnapshot().find((g) => g.personId === person.id);
-  if (inRoom) broadcast({ type: "party_joined", data: { ...inRoom, avatar } });
+  for (const houseId of partyHousesOf(person.id)) {
+    const inRoom = partyRoomSnapshot(houseId).find((g) => g.personId === person.id);
+    if (inRoom) broadcast(houseId, { type: "party_joined", data: { ...inRoom, avatar } });
+  }
 
-  return redirect("/", 303);
+  // Back to the house you came from (the editor passes it along), else "/".
+  return redirect(safeNext(String(form.get("next") ?? "")) ?? "/", 303);
 };

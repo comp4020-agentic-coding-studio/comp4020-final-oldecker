@@ -2,8 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import type { APIRoute } from "astro";
 import { logAction } from "../../../../lib/audit";
 import { db } from "../../../../lib/db";
-import { currentPerson } from "../../../../lib/identity";
-import { postScores } from "../../../../lib/schema";
+import { houseAccess } from "../../../../lib/houses";
+import { postScores, posts } from "../../../../lib/schema";
 import { SCORE_MAX, SCORE_MIN } from "../../../../lib/temperature";
 
 export const prerender = false;
@@ -12,15 +12,22 @@ export const prerender = false;
 // form-like content types (see PROCESS.md), and this mutates the same way
 // every other action in this app does, so it should be covered by the same
 // check, not quietly exempt from it.
-export const POST: APIRoute = async ({ params, request, cookies }) => {
-  const person = currentPerson(cookies);
-  if (!person) return new Response("join first", { status: 401 });
+export const POST: APIRoute = async ({ params, request, cookies, url }) => {
+  const form = await request.formData().catch(() => null);
+  const access = houseAccess(cookies, url, form);
+  if (access instanceof Response) return access;
+  const { person, house } = access;
 
   const postId = Number(params.id);
   if (!Number.isInteger(postId)) return new Response("invalid post", { status: 400 });
 
-  const form = await request.formData();
-  const raw = form.get("score");
+  // The post has to be in the house you named (and are a member of) ---
+  // otherwise this would be a way to vote on, and read the scores of, a
+  // post in a house you can't see.
+  const post = db.select({ houseId: posts.houseId }).from(posts).where(eq(posts.id, postId)).get();
+  if (!post || post.houseId !== house.id) return new Response("post not found", { status: 404 });
+
+  const raw = form?.get("score");
   const score = typeof raw === "string" ? Math.round(Number(raw)) : NaN;
   if (!Number.isInteger(score) || score < SCORE_MIN || score > SCORE_MAX)
     return new Response(`score must be an integer between ${SCORE_MIN} and ${SCORE_MAX}`, {
@@ -35,7 +42,7 @@ export const POST: APIRoute = async ({ params, request, cookies }) => {
     })
     .run();
 
-  logAction(person, "post_score", `postId=${postId} score=${score}`);
+  logAction(person, "post_score", `house=${house.slug} postId=${postId} score=${score}`);
 
   // The full set, not just this one vote --- the client redraws its own
   // strip plot from this so your own rating shows up immediately, same

@@ -1,0 +1,194 @@
+/* The app's colour tokens, shared by the house page (src/pages/h/[slug].astro),
+   the street page (src/pages/houses.astro) and the invite/door pages. Warm
+   paper in light mode, Tokyo Night in dark. Imported from frontmatter, so
+   Astro ships it as a global stylesheet. */
+:root {
+  color-scheme: light dark;
+  --bg: #faf7f2;
+  --ink: #2b2420;
+  --card: #ffffff;
+  --border: #e8e0d6;
+  --text-muted: #898781;
+  --danger: #a8302f;
+  --danger-bg: #fbeeed;
+  /* diverging pair for the temperature strip/slider --- dataviz skill's
+     validated default (blue<->red), re-validated against this app's
+     own --card surfaces (both modes pass all six checks) */
+  --temp-cold: #2a78d6;
+  --temp-hot: #e34948;
+  --temp-neutral-ink: #898781;
+  /* a warm amber for the party room specifically --- distinct from
+     the cold/hot pair and the feeling/doing category tags, so it
+     reads as its own, celebratory thing. #b8791f clears the 3:1 floor
+     for non-text UI/graphics against both --card (3.63:1) and --bg
+     (3.39:1); --party-glow is the same hue at low opacity, used only
+     as a background tint, never for text. */
+  --party-accent: #b8791f;
+  --party-glow: #b8791f14;
+  /* the party room's furniture and walls. Purely decorative paint, so
+     no contrast floor applies to these --- the things that DO carry
+     meaning stay on tokens already checked above: the room's outline
+     (--party-accent, 3.4:1+ on --bg) and the guest name tags (--ink on
+     --card, 14:1+, since the tags have their own card-coloured pill
+     and never sit directly on the floor or rug). */
+  --room-wall: #f8e6c6;
+  --room-wall-stripe: #f4dcb6;
+  --room-floor: #dcbb8c;
+  --room-floor-line: #c9a572;
+  --room-trim: #a8733c;
+  --room-rug: #d96a5b;
+  --room-rug-edge: #f3d9a0;
+  --room-sofa: #4a9488;
+  --room-sofa-dark: #38766c;
+  --room-sky: #bfe4f6;
+  --room-sun: #f7c948;
+  --room-curtain: #e8a29a;
+  --room-lamp: #f2c14e;
+  --room-lamp-glow: #f2c14e40;
+  --room-flag-a: #e0605a;
+  --room-flag-b: #4a86d8;
+  --room-flag-c: #3fa08f;
+  --room-balloon-a: #e0605a;
+  --room-balloon-b: #4a86d8;
+  --room-balloon-c: #f2c14e;
+  --room-shadow: #5a3a1c33;
+  --room-hover-ring: #b8791f40;
+  /* the corridor: a cooler, calmer sage hallway, so it reads as "between
+     rooms" next to the party room's warm wallpaper. Decorative paint only;
+     the corridor's outline and name tags use --border/--ink/--card. */
+  --hall-wall: #e4ecdf;
+  --hall-wall-stripe: #dbe5d5;
+  --hall-wainscot: #b9cbb1;
+  --hall-floor: #c8a57a;
+  --hall-floor-line: #b8946a;
+  --hall-runner: #5b7fa8;
+  --hall-runner-edge: #e9d9a8;
+  --hall-door: #9a6b45;
+  --hall-door-dark: #7c5334;
+  --hall-frame: #a8733c;
+  --hall-art-a: #e8a29a;
+  --hall-art-b: #7fc6d9;
+  --hall-light: #fff1c4;
+  /* the street, outside: sky, grass, pavement and road, plus four house
+     paints the street page cycles through so neighbouring houses differ */
+  --street-sky-top: #bfe4f6;
+  --street-sky-bottom: #e8f5fb;
+  --street-grass: #9ccb7e;
+  --street-grass-dark: #7fb262;
+  --street-pavement: #d9d2c5;
+  --street-pavement-line: #c3baab;
+  --street-road: #6d6a66;
+  --street-road-line: #f3e7c4;
+  --street-cloud: #ffffff;
+  --street-window: #bfe4f6;
+  --street-window-lit: #f7d774;
+  --street-door: #7c5334;
+  --house-a: #f4d6a8;
+  --house-a-roof: #c8553d;
+  --house-b: #cfe3d4;
+  --house-b-roof: #3f6b5a;
+  --house-c: #f3c9c4;
+  --house-c-roof: #8a4f78;
+  --house-d: #d4dcef;
+  --house-d-roof: #3a5a9c;
+  --sign-wood: #b07a48;
+  --sign-wood-dark: #8a5a30;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Tokyo Night --- re-checked WCAG contrast against this --card
+       before swapping in: ink 9.0:1, temp-cold 4.0:1, temp-hot
+       4.5:1, all comfortably clear of the 3:1 floor for non-text
+       marks (ink clears normal-text 4.5:1 too) */
+    --bg: #1a1b26;
+    --ink: #c0caf5;
+    --card: #24283b;
+    --border: #3b4261;
+    --text-muted: #8a93c0;
+    --danger: #f19999;
+    --danger-bg: #3a2530;
+    --temp-cold: #3987e5;
+    --temp-hot: #e66767;
+    --temp-neutral-ink: #565f89;
+    /* #e8a33d clears 3:1 against both --card (6.75:1) and --bg
+       (7.93:1) here, comfortably --- lighter than the light-mode
+       value since it has to hold up against a dark surface instead. */
+    --party-accent: #e8a33d;
+    --party-glow: #e8a33d1a;
+    /* the same room at night: indigo wall, dim boards, lamp and
+       string-flags as the warm points of light */
+    --room-wall: #2d3156;
+    --room-wall-stripe: #292d4f;
+    --room-floor: #3b3558;
+    --room-floor-line: #302b4a;
+    --room-trim: #1d1f33;
+    --room-rug: #a4506a;
+    --room-rug-edge: #6d4a6e;
+    --room-sofa: #3f8a90;
+    --room-sofa-dark: #2f6b72;
+    --room-sky: #1b2552;
+    --room-sun: #e8e2c8;
+    --room-curtain: #8a4f78;
+    --room-lamp: #e8a33d;
+    --room-lamp-glow: #e8a33d38;
+    --room-flag-a: #e66767;
+    --room-flag-b: #5a96ec;
+    --room-flag-c: #4db8a4;
+    --room-balloon-a: #e66767;
+    --room-balloon-b: #5a96ec;
+    --room-balloon-c: #e8a33d;
+    --room-shadow: #0a0b1466;
+    --room-hover-ring: #e8a33d4d;
+    --hall-wall: #263044;
+    --hall-wall-stripe: #232c3f;
+    --hall-wainscot: #1f283a;
+    --hall-floor: #3a3352;
+    --hall-floor-line: #2f2945;
+    --hall-runner: #3d5f8a;
+    --hall-runner-edge: #6d6a8e;
+    --hall-door: #5a4466;
+    --hall-door-dark: #43334e;
+    --hall-frame: #6d5a7e;
+    --hall-art-a: #a4506a;
+    --hall-art-b: #3f8a90;
+    --hall-light: #e8a33d;
+    /* the street at night: lit windows are the warm points of light */
+    --street-sky-top: #121630;
+    --street-sky-bottom: #24294a;
+    --street-grass: #2f5a45;
+    --street-grass-dark: #264a39;
+    --street-pavement: #3b3f5c;
+    --street-pavement-line: #32354f;
+    --street-road: #1d1f33;
+    --street-road-line: #6d6a8e;
+    --street-cloud: #3b4261;
+    --street-window: #2a3160;
+    --street-window-lit: #e8b84d;
+    --street-door: #43334e;
+    --house-a: #6b5a48;
+    --house-a-roof: #8f3f30;
+    --house-b: #3f5a4f;
+    --house-b-roof: #2a4a3e;
+    --house-c: #6a4a5e;
+    --house-c-roof: #4e2f48;
+    --house-d: #48527a;
+    --house-d-roof: #2b3a66;
+    --sign-wood: #7a5638;
+    --sign-wood-dark: #5a3e26;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.5;
+}

@@ -3,6 +3,7 @@
 // action here, everyone else's over SSE).
 import { PALETTE } from "../lib/canvas";
 import { applyCanvasName } from "./canvas-dom";
+import { houseUrl } from "./house-context";
 
 const svg = document.querySelector<SVGSVGElement>("#pixel-canvas");
 const cooldownLabel = document.querySelector<HTMLElement>("#canvas-cooldown");
@@ -53,7 +54,7 @@ svg?.addEventListener("click", async (event) => {
   const y = rect.dataset.y;
   if (x === undefined || y === undefined) return;
 
-  const res = await fetch("/api/canvas/pixel", {
+  const res = await fetch(houseUrl("/api/canvas/pixel"), {
     method: "POST",
     body: new URLSearchParams({ x, y, color: String(selectedColor) }),
   });
@@ -104,7 +105,7 @@ renameForm?.addEventListener("submit", async (event) => {
   const name = renameInput?.value.trim();
   if (!name) return;
 
-  const res = await fetch("/api/canvas/name", { method: "POST", body: new URLSearchParams({ name }) });
+  const res = await fetch(houseUrl("/api/canvas/name"), { method: "POST", body: new URLSearchParams({ name }) });
   if (res.ok) applyCanvasName((await res.json()).name);
   closeEditor();
 });

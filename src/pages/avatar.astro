@@ -1,11 +1,15 @@
 ---
 import AvatarEditor from "../components/AvatarEditor.astro";
+import { safeNext } from "../lib/houses";
 import { currentPerson } from "../lib/identity";
 
 export const prerender = false;
 
 const person = currentPerson(Astro.cookies);
 if (!person) return Astro.redirect("/");
+// The house you opened the editor from (?next=/h/<slug>), so saving or
+// cancelling takes you back there rather than to "/".
+const next = safeNext(Astro.url.searchParams.get("next"));
 ---
 
 <!doctype html>
@@ -80,8 +84,9 @@ if (!person) return Astro.redirect("/");
       <h1>edit your avatar</h1>
       <form method="post" action="/api/avatar">
         <AvatarEditor value={person.avatar} />
+        {next && <input type="hidden" name="next" value={next} />}
         <div class="actions">
-          <a href="/">cancel</a>
+          <a href={next ?? "/"}>cancel</a>
           <button type="submit">save</button>
         </div>
       </form>

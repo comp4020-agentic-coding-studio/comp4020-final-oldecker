@@ -1,0 +1,101 @@
+---
+// Shell for the single-house "front door" pages: an invite link
+// (/join/<code>) and the door you get at /h/<slug> when you're not a member
+// (/door). One centred house front over a strip of pavement, then the slot.
+import "../styles/tokens.css";
+import HouseFront from "../components/HouseFront.astro";
+
+interface Props {
+  title: string;
+  paint?: number;
+}
+const { title, paint = 0 } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · the board</title>
+  </head>
+  <body>
+    <main class="door-page">
+      <div class="door-scene" aria-hidden="true">
+        <HouseFront paint={paint} class="door-house" />
+        <div class="door-pavement"></div>
+      </div>
+      <div class="door-card">
+        <slot />
+      </div>
+    </main>
+  </body>
+</html>
+
+<style is:global>
+  .door-page {
+    max-width: 26rem;
+    margin: 0 auto;
+    padding: 2rem 1rem 4rem;
+    text-align: center;
+  }
+  .door-scene {
+    position: relative;
+    height: 10rem;
+    border-radius: 1rem 1rem 0 0;
+    background: linear-gradient(var(--street-sky-top), var(--street-sky-bottom));
+    overflow: hidden;
+  }
+  .door-house {
+    position: absolute;
+    left: 50%;
+    bottom: 1.4rem;
+    width: 8rem;
+    transform: translateX(-50%);
+  }
+  .door-pavement {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1.5rem;
+    background: var(--street-pavement);
+    border-top: 4px solid var(--street-grass);
+  }
+  .door-card {
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 1rem 1rem;
+    background: var(--card);
+    display: grid;
+    gap: 0.8rem;
+  }
+  .door-card h1 {
+    margin: 0;
+    font-size: 1.3rem;
+    overflow-wrap: anywhere;
+  }
+  .door-card p {
+    margin: 0;
+    color: var(--text-muted);
+  }
+  .door-card form {
+    display: grid;
+  }
+  .door-card button,
+  .door-card .door-link {
+    padding: 0.6rem 1.2rem;
+    border-radius: 999px;
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: var(--bg);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .door-card .door-link.secondary {
+    background: transparent;
+    color: var(--ink);
+  }
+</style>

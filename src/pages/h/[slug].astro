@@ -1,0 +1,1930 @@
+---
+// One house's board: its feed, plant, wall, party room, and the corridor
+// everyone currently in the house stands in. Every query below is scoped to
+// this house, and nothing is read until membership has been checked --- a
+// non-member gets a 403 "door" page with none of the house's data on it.
+import "../../styles/tokens.css";
+import { and, desc, eq } from "drizzle-orm";
+import { activityLevel } from "../../lib/activity";
+import { renderAvatarSvg } from "../../lib/face";
+import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../../lib/canvas";
+import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../../lib/canvas-meta";
+import { db } from "../../lib/db";
+import { presenceSnapshot } from "../../lib/events";
+import { houseBySlug, isMember, setLastHouse } from "../../lib/houses";
+import { currentPerson } from "../../lib/identity";
+import { partyRoomSnapshot, sweepExpiredPartyGuests } from "../../lib/party";
+import { MAX_NAME_LENGTH, plantHealth, plantName } from "../../lib/plant";
+import { plantSvgForStage } from "../../lib/plant-art";
+import { sweepExpiredPosts } from "../../lib/posts";
+import { auditLog, people, pixels, postImages, postScores, posts } from "../../lib/schema";
+import { emojiForScore, layoutDots, median, SCORE_MAX, SCORE_MIN, scoreToY } from "../../lib/temperature";
+
+export const prerender = false;
+
+const slug = Astro.params.slug ?? "";
+const here = `/h/${encodeURIComponent(slug)}`;
+
+const maybePerson = currentPerson(Astro.cookies);
+// Logged out: log in first, then come straight back here.
+if (!maybePerson) return Astro.redirect(`/login?${new URLSearchParams({ next: here })}`);
+const person = maybePerson;
+
+const maybeHouse = houseBySlug(slug);
+// No such house, or not yours: the door page, with the right status code and
+// nothing from inside. The two cases look alike on purpose apart from the
+// wording --- the 404/403 split only says whether the name exists, which
+// "visit by name" on the street page already tells anyone who asks.
+if (!maybeHouse || !isMember(maybeHouse.id, person.id)) {
+  return Astro.rewrite(`/door?${new URLSearchParams({ house: slug, missing: maybeHouse ? "" : "1" })}`);
+}
+const house = maybeHouse;
+
+// "/" sends you back to whichever house you last opened.
+setLastHouse(person.id, house.id);
+
+const sort = Astro.url.searchParams.get("sort") === "extreme" ? "extreme" : "new";
+
+// Derived fresh on every render, same as plantHealth() below --- no cron, no
+// counter, nothing to keep in sync. The common case (nothing's expired) is
+// one cheap, empty-result SELECT; see src/lib/posts.ts.
+sweepExpiredPosts();
+// Catches anything a restart's lost party-room timers missed --- see
+// src/lib/party.ts.
+sweepExpiredPartyGuests();
+
+const feed = db
+  .select({
+    id: posts.id,
+    authorId: posts.authorId,
+    category: posts.category,
+    body: posts.body,
+    createdAt: posts.createdAt,
+    authorName: people.name,
+    authorAvatar: people.avatar,
+  })
+  .from(posts)
+  .innerJoin(people, eq(posts.authorId, people.id))
+  .where(eq(posts.houseId, house.id))
+  // id as a tiebreaker: createdAt is second-resolution, so two posts in
+  // the same second would otherwise sort arbitrarily against each other
+  .orderBy(desc(posts.createdAt), desc(posts.id))
+  .all();
+
+const images = Object.fromEntries(
+  feed.map((post) => [
+    post.id,
+    db
+      .select({ path: postImages.path })
+      .from(postImages)
+      .where(eq(postImages.postId, post.id))
+      .orderBy(postImages.position)
+      .all()
+      .map((row) => row.path),
+  ]),
+);
+
+// Every individual vote on THIS house's posts, grouped by post --- the raw
+// material for the median/strip-plot display and for "extremest" sorting.
+// Never rendered as a list of numbers anywhere (see the strip plot below):
+// this is read once, here, to derive the two aggregates that ARE shown.
+const scoresByPost: Record<number, number[]> = {};
+for (const row of db
+  .select({ postId: postScores.postId, score: postScores.score })
+  .from(postScores)
+  .innerJoin(posts, eq(posts.id, postScores.postId))
+  .where(eq(posts.houseId, house.id))
+  .all())
+  (scoresByPost[row.postId] ??= []).push(row.score);
+
+// "extremest" sorts on the group's average lean (|avg score|), not any one
+// person's vote --- how strongly the room has landed towards 🔥 or ❄️
+// overall, regardless of direction. Computed at read time, same as the
+// plant's health: no stored aggregate to keep in sync.
+const avgOf = (scores: number[] | undefined) =>
+  scores?.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+
+// Each visitor's own existing vote (if any), so returning to the board
+// shows your slider where you left it rather than snapping back to neutral.
+const myScores = Object.fromEntries(
+  db
+    .select({ postId: postScores.postId, score: postScores.score })
+    .from(postScores)
+    .innerJoin(posts, eq(posts.id, postScores.postId))
+    .where(and(eq(postScores.personId, person.id), eq(posts.houseId, house.id)))
+    .all()
+    .map((row) => [row.postId, row.score]),
+);
+
+if (sort === "extreme")
+  feed.sort((a, b) => Math.abs(avgOf(scoresByPost[b.id])) - Math.abs(avgOf(scoresByPost[a.id])));
+
+// The strip plot's own scale: a vertical pixel height the rotated slider's
+// track length has to match exactly (see the CSS below) so the group's
+// votes and your own thumb read as one shared axis.
+const STRIP_H = 96;
+const STRIP_W = 20;
+
+// Everything a post's template fragment needs, precomputed here rather than
+// inside the template: Astro's template compiler doesn't accept a
+// block-bodied arrow (`.map(x => { const ...; return (...) })`) the way
+// plain TSX does, so per-post derivation lives in the frontmatter and the
+// template below stays a single-expression `.map`.
+const feedView = feed.map((post) => {
+  const scores = scoresByPost[post.id] ?? [];
+  const med = median(scores);
+  const dots = layoutDots(scores, STRIP_W, STRIP_H);
+  const stripLabel =
+    scores.length === 0
+      ? "no one has rated this post yet"
+      : `group rating: ${scores.length} vote${scores.length === 1 ? "" : "s"}, median ${emojiForScore(med ?? 0)}`;
+  const medianY = med === null ? null : scoreToY(med, STRIP_H);
+  const medianEmoji = med === null ? "–" : emojiForScore(med);
+  const medianTitle = med === null ? "no votes yet" : `median: ${Math.round(med)}`;
+  return { ...post, dots, stripLabel, medianY, medianEmoji, medianTitle, myScore: myScores[post.id] ?? 0 };
+});
+
+const health = plantHealth(house.id);
+const plantDisplayName = plantName(house.id);
+// A real snapshot at render time, not an empty list that waits for the
+// client's SSE connection to populate it --- so a reload shows who's here
+// immediately, same as the live updates do afterwards.
+const initialPartyGuests = partyRoomSnapshot(house.id);
+const inPartyRoom = initialPartyGuests.some((g) => g.personId === person.id);
+// The corridor: everyone with this house open right now, minus you (your
+// own chip is rendered separately, below, so it's never rebuilt mid-drag)
+// and minus anyone standing in the party room (they're shown there).
+const partyIds = new Set(initialPartyGuests.map((g) => g.personId));
+const initialCorridor = presenceSnapshot(house.id).filter((p) => p.personId !== person.id && !partyIds.has(p.personId));
+
+// The canvas's current state: one row per painted cell (unpainted cells just
+// aren't in the table --- see schema.ts), at most CANVAS_SIZE², trivial to
+// read in full on every render, same as the rest of this page's data.
+const paintedPixels = db.select().from(pixels).where(eq(pixels.houseId, house.id)).all();
+const pixelByCoord = new Map(paintedPixels.map((p) => [`${p.x},${p.y}`, p.colorIndex]));
+
+// This viewer's own remaining cooldown, computed the same way the API route
+// checks it (most recent pixel_place row), so a reload mid-cooldown shows
+// the real wait state instead of resetting to "ready". Per person, not per
+// house: like the activity level it comes from, it's a private perk that
+// follows you between houses.
+const lastPixelPlace = db
+  .select({ createdAt: auditLog.createdAt })
+  .from(auditLog)
+  .where(and(eq(auditLog.personId, person.id), eq(auditLog.action, "pixel_place")))
+  .orderBy(desc(auditLog.createdAt))
+  .limit(1)
+  .get();
+// Private: only ever rendered into this viewer's own page.
+const myActivity = activityLevel(person.id);
+const myCanvasCooldown = cooldownRemaining(lastPixelPlace?.createdAt ?? null, myActivity.cooldownSeconds);
+const canvasDisplayName = canvasName(house.id);
+
+const invitePath = `/join/${house.inviteCode}`;
+
+const CATEGORY_LABEL: Record<string, string> = {
+  emotional: "feeling",
+  practical: "doing",
+};
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{house.name} · the board</title>
+    <style>
+      main {
+        /* wide enough for the feed to go multi-column with room to spare;
+           the controls above it (plant widget, composer, sort toggle) stay
+           narrow via their own max-width, below */
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 4rem;
+      }
+      .plant-widget,
+      .canvas-widget,
+      #compose-form,
+      .sort-toggle {
+        max-width: 640px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      /* Grid, not CSS multi-column: `columns` lays items out column-major
+         (fills column 1 top-to-bottom, then column 2), so reading left to
+         right across a row jumps 1-then-4, 2-then-5 --- newest-first sorting
+         then reads like 14/25/36 instead of the newest posts actually
+         sitting together as 12/34/56. Grid is row-major by default, so
+         posts read in the order they were written, left to right then down
+         --- the trade-off is a shared row height per row (the tallest card
+         in a row sets it) rather than true masonry packing into whichever
+         column is shortest.
+         min(380px, 100%), not a bare 380px: minmax()'s minimum is a hard
+         floor even when the container is narrower than it --- on a ~358px-
+         wide phone viewport a bare 380px floor forces a column wider than
+         the screen (the same mobile-overflow family of bug already hit
+         once this session with the compose form's fields), instead of
+         actually falling back to one column. */
+      .feed {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr));
+        gap: 1rem;
+      }
+
+      /* --- the plant ------------------------------------------------- */
+      .plant-widget {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+        margin-bottom: 1.5rem;
+      }
+      /* stage affects the plant itself (growth); "just-watered" bumps the
+         wrapping element so the two transforms never fight over one box. */
+      #plant {
+        transition: transform 0.3s ease;
+      }
+      #plant.just-watered {
+        transform: scale(1.1);
+      }
+      #plant svg {
+        width: 72px;
+        height: 72px;
+        transition: transform 0.4s ease;
+        transform-origin: bottom center;
+      }
+      /* the artwork itself differs per stage now (src/lib/plant-art.ts) ---
+         this is just an extra scale/tilt layered on top of that, not what
+         carries the stage difference. */
+      #plant[data-stage="wilting"] svg {
+        transform: scale(0.8) rotate(-6deg);
+      }
+      #plant[data-stage="thirsty"] svg {
+        transform: scale(0.92);
+      }
+      #plant[data-stage="okay"] svg {
+        transform: scale(1.04);
+      }
+      #plant[data-stage="thriving"] svg {
+        transform: scale(1.2);
+      }
+      .plant-info {
+        flex: 1;
+        min-width: 0; /* same reasoning as #compose-form's fields: don't floor it at its content's width */
+      }
+      .plant-info h2 {
+        margin: 0 0 0.2rem;
+        font-size: 1rem;
+      }
+      /* the name tag reads as plain text until you look for it --- same
+         size/weight as the heading it sits in, just a button underneath */
+      #plant-name {
+        font: inherit;
+        font-weight: inherit;
+        color: inherit;
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        border-bottom: 1px dotted transparent;
+      }
+      #plant-name:hover,
+      #plant-name:focus-visible {
+        border-bottom-color: var(--border);
+      }
+      #plant-stage {
+        font-size: 0.85rem;
+        opacity: 0.7;
+      }
+      /* lives inside the h2, right where the name button sits --- it
+         replaces that button in place, not a form bolted on below
+         everything else in the widget */
+      #rename-plant-form {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+      }
+      #rename-plant-form[hidden] {
+        display: none;
+      }
+      #rename-plant-form input {
+        font: inherit;
+        font-size: 0.8rem;
+        width: 7rem;
+        padding: 0.15rem 0.4rem;
+        border: 1px solid var(--border);
+        border-radius: 0.4rem;
+        background: transparent;
+        color: inherit;
+      }
+      #rename-plant-form button {
+        border: none;
+        background: none;
+        cursor: pointer;
+        opacity: 0.6;
+        font-size: 0.9rem;
+      }
+      #rename-plant-form button:hover {
+        opacity: 1;
+      }
+
+      /* --- the watering can -------------------------------------------- */
+      #water-can {
+        position: relative;
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 0.5rem;
+        color: var(--ink);
+        line-height: 1;
+        transition: transform 0.15s ease;
+      }
+      #water-can:active {
+        transform: scale(0.9);
+      }
+      /* the can travels to the plant and back --- --travel-x/-y are
+         measured per-click in src/scripts/water-pour.ts, not hardcoded,
+         so this keeps working whatever the layout puts between them */
+      #water-can.pouring {
+        animation: travel 1s ease;
+      }
+      @keyframes travel {
+        0% {
+          transform: translate(0, 0);
+        }
+        25% {
+          transform: translate(var(--travel-x, 0px), var(--travel-y, 0px));
+        }
+        70% {
+          transform: translate(var(--travel-x, 0px), var(--travel-y, 0px));
+        }
+        100% {
+          transform: translate(0, 0);
+        }
+      }
+      .can-icon {
+        width: 2.6rem;
+        height: 2rem;
+        display: block;
+        transform-origin: 85% 70%; /* roughly the base of the can, not its spout tip */
+        transition: transform 0.15s ease;
+      }
+      #water-can.pouring .can-icon {
+        animation: pour 1s ease;
+      }
+      /* timed to land inside the `travel` hold window above (25%-70%):
+         tilt starts once the can has arrived over the plant, and untilts
+         before it starts travelling back */
+      @keyframes pour {
+        0%,
+        28% {
+          transform: rotate(0deg);
+        }
+        /* positive = clockwise: the spout (upper-right of the icon) swings
+           further right and dips down, towards the pivot at bottom-right
+           (transform-origin above) --- a lean to the right, tipping forward
+           to pour, not away from it. */
+        38%,
+        62% {
+          transform: rotate(35deg);
+        }
+        72%,
+        100% {
+          transform: rotate(0deg);
+        }
+      }
+      /* anchored roughly under where the spout tip swings to mid-pour
+         (further right and lower than its resting position, now that the
+         can leans right --- see the `pour` keyframes above) */
+      .drop {
+        position: absolute;
+        top: 0.45rem;
+        right: 0.15rem;
+        width: 5px;
+        height: 7px;
+        border-radius: 0 50% 50% 50%;
+        background: #6fa8d8;
+        opacity: 0;
+        transform: rotate(45deg); /* shape only: turns the circle into a teardrop */
+      }
+      .drop:nth-of-type(2) {
+        right: 0.35rem;
+      }
+      .drop:nth-of-type(3) {
+        right: -0.05rem;
+      }
+      /* falls during the `pour` tilt-hold window (38%-62% of the 1s total) */
+      #water-can.pouring .drop {
+        animation: drip 0.35s ease calc(var(--i) * 0.07s + 0.4s);
+      }
+      /* translateY listed before (outer to) rotate(45deg): the fall is a
+         straight screen-space displacement, with the teardrop's own shape
+         rotation applied first and not carried into the fall direction.
+         (the reverse order --- rotate() outer --- was rotating the actual
+         translateY displacement by 45°, so the drop fell diagonally
+         instead of straight down.) */
+      @keyframes drip {
+        0% {
+          opacity: 0;
+          transform: translateY(0) rotate(45deg);
+        }
+        30% {
+          opacity: 1;
+        }
+        90% {
+          opacity: 0.8;
+        }
+        100% {
+          opacity: 0;
+          transform: translateY(16px) rotate(45deg);
+        }
+      }
+
+      /* --- the shared pixel canvas --------------------------------------
+         r/place-style but tiny-scale: 32x32, a fixed palette, last-write-
+         wins, live over the same SSE channel as the plant (see PROCESS.md
+         for the conflict-handling reasoning). Hand-rolled inline SVG
+         <rect>s, same style as the plant art / temperature strip / avatars
+         elsewhere in this app, not <canvas>. */
+      .canvas-widget {
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+        margin-bottom: 1.5rem;
+      }
+      .canvas-widget h2 {
+        margin: 0 0 0.6rem;
+        font-size: 1rem;
+      }
+      /* the name reads as plain text until you look for it --- identical
+         pattern to #plant-name/#rename-plant-form above, just scoped to the
+         canvas's own ids. */
+      #canvas-name {
+        font: inherit;
+        font-weight: inherit;
+        color: inherit;
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        border-bottom: 1px dotted transparent;
+      }
+      #canvas-name:hover,
+      #canvas-name:focus-visible {
+        border-bottom-color: var(--border);
+      }
+      #rename-canvas-form {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+      }
+      #rename-canvas-form[hidden] {
+        display: none;
+      }
+      #rename-canvas-form input {
+        font: inherit;
+        font-size: 0.8rem;
+        width: 7rem;
+        padding: 0.15rem 0.4rem;
+        border: 1px solid var(--border);
+        border-radius: 0.4rem;
+        background: transparent;
+        color: inherit;
+      }
+      #rename-canvas-form button {
+        border: none;
+        background: none;
+        cursor: pointer;
+        opacity: 0.6;
+        font-size: 0.9rem;
+      }
+      #rename-canvas-form button:hover {
+        opacity: 1;
+      }
+      .canvas-wrap {
+        max-width: 360px;
+        margin: 0 auto;
+      }
+      /* explicit sizing on the <svg> itself, not just its wrapper --- an
+         inline SVG with only a viewBox can still render at its intrinsic
+         default size inside a flex/grid child whose min-width:auto lets it
+         stay oversized (the same family of mobile-overflow bug already hit
+         once this session with the compose form's fields). display:block
+         closes a second, smaller gap: inline SVG defaults to inline, which
+         adds baseline whitespace underneath it. */
+      #pixel-canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        touch-action: manipulation; /* a tap shouldn't also trigger a double-tap zoom on a 1/32nd-wide cell */
+        /* each cell is a 1x1 SVG unit scaled up ~11x by the viewBox --- at
+           the default smooth-edge antialiasing, adjacent cells blend into
+           faint grey seams against each other at that scale, reading as a
+           blurry grid rather than crisp pixels. crispEdges (inherited by
+           every <rect> below) snaps edges to the device pixel grid instead
+           --- also just the right look for pixel art specifically. */
+        shape-rendering: crispEdges;
+      }
+      #pixel-canvas rect {
+        cursor: pointer;
+      }
+      .canvas-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        margin-top: 0.8rem;
+        flex-wrap: wrap;
+      }
+      .canvas-palette {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+      }
+      .canvas-swatch {
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 50%;
+        border: 2px solid var(--border);
+        padding: 0;
+        cursor: pointer;
+      }
+      .canvas-swatch[aria-pressed="true"] {
+        border-color: var(--ink);
+      }
+      #canvas-cooldown,
+      #canvas-level {
+        margin: 0;
+        font-size: 0.8rem;
+        opacity: 0.7;
+      }
+
+      /* --- the party room -------------------------------------------------
+         Drag your own avatar from #party-you into the dropzone to signal
+         you're free to hang out; drag an in-room avatar back out to leave
+         early (src/scripts/party-drag.ts). Same bordered-card recipe as
+         .plant-widget/.canvas-widget above, warmed up a little --- a soft
+         gradient card and a dashed-circle dropzone read as an invitation
+         rather than just another form control. */
+      .party-widget {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: linear-gradient(165deg, var(--card), var(--party-glow));
+      }
+      .party-widget h2,
+      .corridor h2 {
+        margin: 0 0 0.2rem;
+        font-size: 1rem;
+      }
+      .party-hint,
+      .corridor-hint {
+        margin: 0 0 0.8rem;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+      }
+
+      /* --- the house bar: back to the street, the house's name, invite --- */
+      .house-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin: 0 0 1rem;
+      }
+      .house-title {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        font-size: 1.35rem;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .house-bar-street {
+        flex: none;
+        font-size: 0.85rem;
+        color: inherit;
+        opacity: 0.75;
+        text-decoration: none;
+      }
+      .house-bar-street:hover {
+        opacity: 1;
+        text-decoration: underline;
+      }
+      .house-bar-actions {
+        flex: none;
+        display: flex;
+        gap: 0.4rem;
+      }
+      .house-bar-actions form {
+        margin: 0;
+      }
+      .pill {
+        padding: 0.25rem 0.8rem;
+        border-radius: 999px;
+        border: 1px solid var(--ink);
+        background: var(--ink);
+        color: var(--bg);
+        font: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+      }
+      .pill.quiet {
+        border-color: var(--border);
+        background: transparent;
+        color: inherit;
+      }
+      .invite-panel {
+        max-width: 640px;
+        margin: 0 auto 1rem;
+        padding: 0.8rem 1rem;
+        border: 1px dashed var(--party-accent);
+        border-radius: 0.8rem;
+        background: var(--card);
+        font-size: 0.85rem;
+      }
+      .invite-panel[hidden] {
+        display: none;
+      }
+      .invite-panel p {
+        margin: 0 0 0.5rem;
+      }
+      .invite-row {
+        display: flex;
+        gap: 0.4rem;
+      }
+      .invite-row input {
+        flex: 1;
+        min-width: 0;
+        padding: 0.3rem 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 0.4rem;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.8rem;
+      }
+
+      /* --- the house map: corridor + party room side by side on a wide
+         screen, stacked on a phone. Wider than the 640px column the
+         widgets below use, since it's two rooms next to each other. */
+      .house-map {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.8rem;
+        margin-bottom: 0.6rem;
+      }
+      @media (min-width: 760px) {
+        .house-map {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+      }
+
+      /* --- the corridor: a sage hallway with a runner, a closed door and a
+         picture on the wall, and the street door open at its far end.
+         Everyone present in the house stands on its floor. */
+      .corridor {
+        position: relative;
+        min-width: 0;
+        min-height: 13rem;
+        display: flex;
+        flex-direction: column;
+        padding: 1rem 5.6rem 0.7rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        overflow: hidden;
+        background: repeating-linear-gradient(90deg, var(--hall-wall) 0 30px, var(--hall-wall-stripe) 30px 32px);
+      }
+      .corridor-head {
+        position: relative;
+        z-index: 1;
+        max-width: 22rem;
+      }
+      .corridor-head h2,
+      .corridor-hint {
+        display: inline;
+        background: color-mix(in srgb, var(--hall-wall) 80%, transparent);
+      }
+      .corridor-hint {
+        display: block;
+        margin-top: 0.15rem;
+      }
+      .corridor-scene {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .corridor-scene svg {
+        position: absolute;
+        display: block;
+        overflow: visible;
+      }
+      .hall-wainscot {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 3.6rem;
+        height: 2.6rem;
+        background: var(--hall-wainscot);
+        border-top: 3px solid var(--hall-frame);
+      }
+      .hall-floor {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 3.6rem;
+        border-top: 4px solid var(--hall-frame);
+        background:
+          repeating-linear-gradient(90deg, transparent 0 55px, var(--hall-floor-line) 55px 57px),
+          var(--hall-floor);
+      }
+      .hall-runner {
+        position: absolute;
+        left: 4%;
+        right: 4.5rem;
+        bottom: 0.7rem;
+        height: 1.6rem;
+        border-radius: 0.3rem;
+        background: var(--hall-runner);
+        box-shadow: inset 0 0 0 3px var(--hall-runner-edge);
+        opacity: 0.85;
+      }
+      .hall-door {
+        width: 2.6rem;
+        bottom: 3.55rem;
+      }
+      .hall-door-a {
+        right: 7.5rem;
+      }
+      .hall-art {
+        width: 3.2rem;
+        left: 46%;
+        top: 4.6rem;
+      }
+      .hall-lamp {
+        width: 2rem;
+        left: 30%;
+        top: 0;
+      }
+      .hall-frame-fill {
+        fill: var(--hall-frame);
+      }
+      .hall-frame-line {
+        stroke: var(--hall-frame);
+      }
+      .hall-door-fill {
+        fill: var(--hall-door);
+      }
+      .hall-door-panel {
+        fill: var(--hall-door-dark);
+      }
+      .hall-knob,
+      .hall-light-fill {
+        fill: var(--hall-light);
+      }
+      .hall-art-bg {
+        fill: var(--street-sky-bottom);
+      }
+      .hall-art-a {
+        fill: var(--hall-art-a);
+      }
+      .hall-art-b {
+        fill: var(--hall-art-b);
+      }
+      .corridor-floor-row {
+        position: relative;
+        z-index: 1;
+        margin-top: auto;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 0.3rem 0.5rem;
+        min-height: 3.6rem;
+      }
+      .corridor-guests {
+        display: contents;
+      }
+      .corridor-floor-row :global(.party-avatar-circle) {
+        box-shadow: 0 0.35rem 0 -0.1rem var(--room-shadow);
+      }
+      .corridor :global(.party-guest-name) {
+        padding: 0 0.35rem;
+        border-radius: 0.6rem;
+        background: var(--card);
+        color: var(--ink);
+        border: 1px solid var(--border);
+        line-height: 1.25;
+      }
+      /* other people in the corridor aren't yours to drag */
+      .corridor :global(.corridor-guest) {
+        cursor: default;
+        touch-action: auto;
+      }
+      .you-circle {
+        border-color: var(--ink);
+        border-width: 2.5px;
+      }
+      .corridor-empty {
+        align-self: center;
+        padding: 0.1rem 0.6rem;
+        border-radius: 1rem;
+        background: var(--card);
+        border: 1px solid var(--border);
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+      .corridor-empty[hidden] {
+        display: none;
+      }
+      /* the street: an open front door at the corridor's far end, with the
+         outdoors showing through. A drop target for your avatar, and a
+         plain link for anyone who'd rather tap. */
+      .street-door {
+        position: absolute;
+        z-index: 2;
+        right: 0.7rem;
+        bottom: 0.55rem;
+        width: 4.4rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.15rem;
+        padding: 0.3rem 0.3rem 0.25rem;
+        border: 2px dashed transparent;
+        border-radius: 0.8rem;
+        color: inherit;
+        text-decoration: none;
+        transition:
+          border-color 0.15s ease,
+          transform 0.15s ease;
+      }
+      .street-door:hover,
+      .street-door:focus-visible,
+      .street-door.drag-over {
+        border-color: var(--ink);
+        transform: translateY(-2px);
+      }
+      .street-door.drag-over {
+        background: var(--room-hover-ring);
+      }
+      .street-door-art {
+        width: 3.2rem;
+        display: block;
+        overflow: visible;
+      }
+      .sd-frame {
+        fill: var(--hall-frame);
+      }
+      .sd-outside {
+        fill: var(--street-sky-top);
+      }
+      .sd-grass {
+        fill: var(--street-grass);
+      }
+      .sd-path {
+        fill: var(--street-pavement);
+      }
+      .sd-sun {
+        fill: var(--room-sun);
+      }
+      .sd-tree {
+        fill: var(--street-grass-dark);
+      }
+      .sd-door-open {
+        fill: var(--hall-door);
+      }
+      .sd-knob {
+        fill: var(--hall-light);
+      }
+      .street-door-label {
+        padding: 0 0.4rem;
+        border-radius: 0.6rem;
+        background: var(--card);
+        border: 1px solid var(--border);
+        font-size: 0.7rem;
+        line-height: 1.3;
+      }
+      @media (max-width: 520px) {
+        .corridor {
+          padding-right: 4.8rem;
+        }
+        .street-door {
+          width: 3.9rem;
+          right: 0.4rem;
+        }
+        .street-door-art {
+          width: 2.7rem;
+        }
+        .hall-door-a,
+        .hall-art {
+          display: none;
+        }
+      }
+      /* flex children default to min-width:auto, which can floor them at
+         their own content's width --- same mobile-overflow trap already hit
+         once this session with the compose form's fields --- so the
+         dropzone (the one child whose content can actually grow, as more
+         guests join) gets an explicit 0 floor instead. */
+      .party-room-dropzone {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+        /* tall enough for the wall's furniture and a row of guests
+           standing on the floor */
+        min-height: 9.5rem;
+        display: flex;
+        align-items: flex-end;
+        padding: 0.5rem 0.6rem 0.6rem;
+        border: 2px solid var(--party-accent);
+        border-radius: 0.9rem;
+        overflow: hidden;
+        /* the back wall: soft vertical wallpaper stripes */
+        background: repeating-linear-gradient(90deg, var(--room-wall) 0 22px, var(--room-wall-stripe) 22px 44px);
+        transition:
+          border-color 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+      .party-room-dropzone.drag-over {
+        border-color: var(--ink);
+        box-shadow:
+          0 0 0 4px var(--room-hover-ring),
+          inset 0 0 0 3px var(--room-lamp-glow);
+      }
+      /* --- the room's set dressing. One absolutely-positioned layer behind
+         the guests; every piece is positioned off the room's own edges (the
+         floor is anchored to the bottom), so the room can grow taller when
+         guests wrap onto a second row without the furniture drifting. These
+         are all server-rendered (never built by party-dom.ts), so plain
+         scoped CSS is enough. pointer-events:none so the layer never eats a
+         drag. */
+      .room-scene {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .room-scene svg {
+        position: absolute;
+        display: block;
+        overflow: visible;
+      }
+      .room-floor {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 4.1rem;
+        border-top: 5px solid var(--room-trim);
+        background:
+          repeating-linear-gradient(90deg, transparent 0 47px, var(--room-floor-line) 47px 49px),
+          var(--room-floor);
+      }
+      .room-rug {
+        position: absolute;
+        left: 18%;
+        right: 18%;
+        bottom: 0.35rem;
+        height: 2.4rem;
+        border-radius: 50%;
+        background: var(--room-rug);
+        box-shadow: inset 0 0 0 4px var(--room-rug-edge);
+        opacity: 0.9;
+      }
+      .room-bunting {
+        top: 0;
+        left: 0;
+      }
+      .room-cord {
+        stroke: var(--room-trim);
+      }
+      .room-flag-a {
+        fill: var(--room-flag-a);
+      }
+      .room-flag-b {
+        fill: var(--room-flag-b);
+      }
+      .room-flag-c {
+        fill: var(--room-flag-c);
+      }
+      .room-window {
+        left: 9%;
+        top: 1.6rem;
+        width: 3.4rem;
+      }
+      .room-trim-fill {
+        fill: var(--room-trim);
+      }
+      .room-trim-line {
+        stroke: var(--room-trim);
+      }
+      .room-sky-fill {
+        fill: var(--room-sky);
+      }
+      .room-sun-fill {
+        fill: var(--room-sun);
+      }
+      .room-hill-fill {
+        fill: var(--room-flag-c);
+        opacity: 0.55;
+      }
+      .room-curtain-fill {
+        fill: var(--room-curtain);
+      }
+      .room-balloons {
+        right: 22%;
+        top: 1.7rem;
+        width: 2.6rem;
+      }
+      .room-balloon-a {
+        fill: var(--room-balloon-a);
+      }
+      .room-balloon-b {
+        fill: var(--room-balloon-b);
+      }
+      .room-balloon-c {
+        fill: var(--room-balloon-c);
+      }
+      .room-shine {
+        fill: #ffffff;
+        opacity: 0.45;
+      }
+      .room-sofa {
+        left: 30%;
+        bottom: 3.3rem;
+        width: 6.2rem;
+      }
+      .room-sofa-back {
+        fill: var(--room-sofa-dark);
+      }
+      .room-sofa-arm {
+        fill: var(--room-sofa);
+      }
+      .room-sofa-seat {
+        fill: var(--room-sofa);
+        stroke: var(--room-sofa-dark);
+        stroke-width: 1.5;
+      }
+      .room-lamp-glow {
+        position: absolute;
+        right: 1%;
+        bottom: 2rem;
+        width: 6rem;
+        height: 6rem;
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--room-lamp-glow), transparent 70%);
+      }
+      .room-lamp {
+        right: 4%;
+        bottom: 2.6rem;
+        width: 1.9rem;
+      }
+      .room-lamp-fill {
+        fill: var(--room-lamp);
+      }
+      /* phone width: the dropzone is only ~250px wide, so thin the set
+         dressing out rather than cram everything in --- guests need the
+         floor more than the room needs a sofa. */
+      @media (max-width: 520px) {
+        .room-sofa,
+        .room-balloons {
+          display: none;
+        }
+        .room-window {
+          left: 6%;
+        }
+      }
+      .party-room-guests {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 0.3rem 0.5rem;
+      }
+      /* in-room guests stand on the floor: a soft shadow under each avatar,
+         and a name tag in its own card-coloured pill so the name never has
+         to be read straight off the rug or floorboards (contrast comes from
+         --ink on --card, not the room paint). :global() since guests are
+         built client-side by party-dom.ts. */
+      .party-room-guests :global(.party-avatar-circle) {
+        box-shadow: 0 0.35rem 0 -0.1rem var(--room-shadow);
+      }
+      .party-room-dropzone :global(.party-guest-name) {
+        padding: 0 0.35rem;
+        border-radius: 0.6rem;
+        background: var(--card);
+        color: var(--ink);
+        border: 1px solid var(--border);
+        line-height: 1.25;
+      }
+      .party-room-empty {
+        position: absolute;
+        z-index: 1;
+        left: 50%;
+        bottom: 1.1rem;
+        transform: translateX(-50%);
+        max-width: calc(100% - 1rem);
+        padding: 0.15rem 0.7rem;
+        border-radius: 1rem;
+        background: var(--card);
+        color: var(--ink);
+        border: 1px solid var(--border);
+        font-size: 0.8rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .party-room-empty[hidden] {
+        display: none;
+      }
+      /* phone width, continued: slimmer standing chips so ~5 guests fit on
+         the one floor row of a ~250px-wide room (a 6th wraps, which is
+         fine). After the base rules above so the overrides win on order. */
+      @media (max-width: 520px) {
+        .party-room-guests {
+          gap: 0.3rem 0.25rem;
+        }
+        .party-room-guests :global(.party-guest) {
+          width: 2.5rem;
+        }
+        .party-room-guests :global(.party-avatar-circle) {
+          width: 2rem;
+          height: 2rem;
+        }
+      }
+      /* a chip is the avatar circle plus its name, stacked --- the shared
+         layout for both #party-you (always SSR-rendered) and every in-room
+         guest (SSR on first load, then built client-side on every
+         join/leave by party-dom.ts's guestEl()). :global() on the parts
+         that can be client-built: Astro's scoped CSS only attaches its
+         scoping attribute to elements it renders server-side, so a plain
+         scoped rule silently never matches an element from
+         document.createElement (it'd render at its default inline size). */
+      .party-guest,
+      :global(.party-guest) {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
+        width: 3rem;
+        cursor: grab;
+        /* a touch-drag must not also scroll the page --- same mechanism
+           #pixel-canvas already needs for its own pointer gestures. */
+        touch-action: none;
+      }
+      .party-avatar-circle,
+      :global(.party-avatar-circle) {
+        width: 2.2rem;
+        height: 2.2rem;
+        border-radius: 50%;
+        background: var(--card);
+        border: 2px solid var(--party-accent);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex: none;
+        transition:
+          transform 0.15s ease,
+          border-color 0.15s ease;
+      }
+      /* a little lift on hover/press --- a small, friendly nudge that this
+         thing wants to be picked up, not just a static icon. */
+      .party-guest:hover .party-avatar-circle,
+      :global(.party-guest:hover .party-avatar-circle) {
+        transform: translateY(-2px);
+        border-color: var(--ink);
+      }
+      .party-guest:active .party-avatar-circle,
+      :global(.party-guest:active .party-avatar-circle) {
+        cursor: grabbing;
+        transform: scale(0.95);
+      }
+      .party-avatar-circle svg,
+      :global(.party-avatar-circle svg) {
+        width: 100%;
+        height: 100%;
+      }
+      .party-guest-name,
+      :global(.party-guest-name) {
+        max-width: 100%;
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .party-you-chip[hidden] {
+        display: none;
+      }
+      /* the dragged copy that actually follows the pointer --- the source
+         avatar never moves itself, so a failed drop has nothing to snap
+         back from (see party-drag.ts). Always created client-side, so
+         :global() for the same reason as .party-guest above. */
+      :global(.party-drag-ghost) {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 3rem;
+        pointer-events: none;
+        z-index: 1000;
+        opacity: 0.85;
+      }
+
+      /* --- composer ---------------------------------------------------- */
+      #compose-form {
+        display: grid;
+        /* minmax(0, 1fr), not the implicit auto-sized track a bare `grid`
+           gives a single column: `auto` tracks size to content's max-content
+           width, so a wide-enough child (see min-width below) can still
+           force the column --- and the whole form --- past the viewport. */
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.6rem;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+        margin-bottom: 2rem;
+      }
+      #compose-form textarea {
+        resize: vertical;
+        min-height: 4rem;
+        padding: 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        background: transparent;
+        color: inherit;
+      }
+      /* grid/flex items default to `min-width: auto`, i.e. their own
+         content's min-content width as a floor, not 0 --- form controls'
+         native content (a select's longest option, a file input's label)
+         can make that floor wider than the screen at larger text sizes
+         (iOS Larger Text, say), which is what was pushing these past the
+         edge on mobile instead of shrinking with everything else. */
+      #compose-form textarea,
+      #compose-form select,
+      #compose-form input[type="file"] {
+        width: 100%;
+        min-width: 0;
+        font: inherit;
+      }
+      #compose-form button {
+        justify-self: start;
+        padding: 0.5rem 1.2rem;
+        border-radius: 999px;
+        border: none;
+        background: var(--ink);
+        color: var(--bg);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      /* --- feed ---------------------------------------------------------- */
+      .post {
+        display: flex;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-left-width: 4px;
+        border-radius: 1rem;
+        background: var(--card);
+        /* no margin-bottom here: .feed's own `gap` already separates every
+           row --- including the single-column case, where each post is
+           still its own grid row --- so a margin on top of that would
+           double the space between posts. */
+      }
+      /* the whole bubble, not just the tag --- same hues as .category-tag,
+         just a much lighter wash so the tag's own pill still reads darker
+         and stands out on top of it */
+      .post-emotional {
+        background: #fbf1f3;
+        border-left-color: #8a3d53;
+      }
+      .post-practical {
+        background: #f1f5fb;
+        border-left-color: #2f5a8a;
+      }
+      @media (prefers-color-scheme: dark) {
+        .post-emotional {
+          background: #2a2430;
+          border-left-color: #f6c9da;
+        }
+        .post-practical {
+          background: #1e2638;
+          border-left-color: #9ec6fa;
+        }
+      }
+      .post-main {
+        flex: 1;
+        min-width: 0; /* so a long image row/caption can't push the temp column off */
+      }
+      .post header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.4rem;
+        font-size: 0.85rem;
+      }
+      .avatar {
+        width: 1.4rem;
+        height: 1.4rem;
+        border-radius: 50%;
+        display: inline-flex;
+        overflow: hidden;
+        background: var(--bg);
+        flex: none;
+      }
+      .avatar svg {
+        width: 100%;
+        height: 100%;
+      }
+      .category-tag {
+        opacity: 0.8;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+      }
+      /* feeling vs doing: a colour, not just a label */
+      .category-emotional {
+        background: #f3dde3;
+        color: #8a3d53;
+      }
+      .category-practical {
+        background: #dde7f3;
+        color: #2f5a8a;
+      }
+      @media (prefers-color-scheme: dark) {
+        .category-emotional {
+          background: #35283a;
+          color: #f6c9da;
+        }
+        .category-practical {
+          background: #253655;
+          color: #9ec6fa;
+        }
+      }
+      /* only rendered server-side for the post's own author (see
+         index.astro's authorId check) --- never rendered-then-hidden for
+         anyone else's post */
+      .delete-post {
+        margin-left: auto;
+        border: none;
+        background: none;
+        padding: 0;
+        font: inherit;
+        font-size: 0.8rem;
+        color: inherit;
+        opacity: 0.5;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .delete-post:hover {
+        opacity: 0.9;
+      }
+
+      .sort-toggle {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+      }
+      .sort-toggle a {
+        color: inherit;
+        opacity: 0.5;
+        text-decoration: none;
+      }
+      .sort-toggle a[aria-current="page"] {
+        opacity: 1;
+        font-weight: 600;
+        text-decoration: underline;
+      }
+
+      /* --- the ❄️<->🔥 slider, on the side of the post -------------------
+         A vertical slider (a horizontal <input> rotated -90deg) overlaid on
+         an SVG strip plot sharing the exact same length/scale, so the
+         group's votes and your own thumb sit on one visual axis: top =
+         SCORE_MAX (🔥), bottom = SCORE_MIN (❄️) --- see scoreToY() in
+         src/lib/temperature.ts, which this layout has to agree with. */
+      .post-temp {
+        flex: none;
+        width: 2.75rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.3rem;
+        padding-top: 0.1rem;
+      }
+      .temp-emoji {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
+      .temp-stack {
+        position: relative;
+      }
+      .temp-strip {
+        position: absolute;
+        inset: 0;
+        pointer-events: none; /* decoration behind the slider, never blocks the drag */
+      }
+      .temp-median-tick {
+        stroke: var(--text-muted);
+        stroke-width: 2;
+        stroke-linecap: round;
+      }
+      .temp-slider-wrap {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        height: 8px; /* the rotated track's thickness */
+        transform: translate(-50%, -50%) rotate(-90deg);
+      }
+      .temp-slider {
+        display: block;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        -webkit-appearance: none;
+        appearance: none;
+        background: linear-gradient(
+          to right,
+          var(--temp-cold),
+          var(--border) 48%,
+          var(--border) 52%,
+          var(--temp-hot)
+        );
+        border-radius: 999px;
+        outline: none;
+      }
+      .temp-median-label {
+        font-size: 0.95rem;
+        line-height: 1;
+        opacity: 0.8;
+        cursor: default;
+      }
+      .temp-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--card);
+        border: 2px solid var(--ink);
+        cursor: grab;
+      }
+      .temp-slider::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--card);
+        border: 2px solid var(--ink);
+        cursor: grab;
+      }
+      .temp-slider:active::-webkit-slider-thumb,
+      .temp-slider:active::-moz-range-thumb {
+        cursor: grabbing;
+      }
+      .post p {
+        margin: 0 0 0.5rem;
+        white-space: pre-wrap;
+      }
+      .post-images {
+        display: flex;
+        gap: 0.4rem;
+      }
+      .post-images img {
+        width: 96px;
+        height: 96px;
+        object-fit: cover;
+        border-radius: 0.6rem;
+      }
+      time {
+        opacity: 0.5;
+        font-size: 0.75rem;
+      }
+
+      .edit-avatar-link {
+        display: block;
+        width: fit-content;
+        font-size: 0.75rem;
+        opacity: 0.6;
+        margin: 0 0 1.4rem;
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body data-house={house.slug}>
+    <main>
+            <header class="house-bar">
+              <a class="house-bar-street" href="/houses" title="all your houses">← street</a>
+              <h1 class="house-title">{house.name}</h1>
+              <div class="house-bar-actions">
+                <button type="button" id="invite-button" class="pill" aria-expanded="false" aria-controls="invite-panel">
+                  invite
+                </button>
+                <form method="post" action="/api/logout">
+                  <button type="submit" class="pill quiet" title={`logged in as ${person.name}`}>log out</button>
+                </form>
+              </div>
+            </header>
+            <div id="invite-panel" class="invite-panel" hidden>
+              <p>Anyone with this link can join <strong>{house.name}</strong>. Or they can type its name on the street.</p>
+              <div class="invite-row">
+                <input id="invite-link" type="text" readonly value={invitePath} data-path={invitePath} aria-label="invite link" />
+                <button type="button" id="invite-copy" class="pill">copy</button>
+              </div>
+            </div>
+
+            {/* The house map: the corridor everyone stands in by default, the
+                party room you drag into, and the street door at the end that
+                takes you back out to /houses. All three are drop zones for the
+                same drag gesture (src/scripts/drag.ts). */}
+            <section class="house-map" aria-label="inside the house">
+              <div class="corridor" id="corridor">
+                <div class="corridor-scene" aria-hidden="true">
+                  <div class="hall-wainscot"></div>
+                  <div class="hall-floor"></div>
+                  <div class="hall-runner"></div>
+                  <svg class="hall-door hall-door-a" viewBox="0 0 40 70">
+                    <rect x="2" y="2" width="36" height="68" rx="3" class="hall-frame-fill" />
+                    <rect x="6" y="6" width="28" height="64" rx="2" class="hall-door-fill" />
+                    <rect x="10" y="12" width="20" height="20" rx="1.5" class="hall-door-panel" />
+                    <rect x="10" y="38" width="20" height="26" rx="1.5" class="hall-door-panel" />
+                    <circle cx="29" cy="40" r="1.8" class="hall-knob" />
+                  </svg>
+                  <svg class="hall-art" viewBox="0 0 60 40">
+                    <rect x="1" y="1" width="58" height="38" rx="2" class="hall-frame-fill" />
+                    <rect x="5" y="5" width="50" height="30" class="hall-art-bg" />
+                    <circle cx="20" cy="17" r="6" class="hall-art-a" />
+                    <path d="M5 35 L22 22 L32 30 L42 20 L55 32 L55 35 Z" class="hall-art-b" />
+                  </svg>
+                  <svg class="hall-lamp" viewBox="0 0 30 24">
+                    <path d="M15 0 V6" class="hall-frame-line" stroke-width="1.5" />
+                    <path d="M5 16 Q15 2 25 16 Z" class="hall-light-fill" />
+                    <ellipse cx="15" cy="16" rx="10" ry="2.5" class="hall-frame-fill" />
+                  </svg>
+                </div>
+                <div class="corridor-head">
+                  <h2>the corridor</h2>
+                  <p class="corridor-hint">who's in the house right now. Drag yourself into the party room, or out the door to the street.</p>
+                </div>
+                <div class="corridor-floor-row">
+                  <span
+                    id="party-you"
+                    class="party-guest party-you-chip"
+                    title="drag me into the party room, or out to the street"
+                    data-person-id={person.id}
+                    data-name={person.name}
+                    data-avatar={person.avatar}
+                    hidden={inPartyRoom}
+                  >
+                    <span class="party-avatar-circle you-circle">
+                      <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
+                    </span>
+                    <span class="party-guest-name">you</span>
+                  </span>
+                  <div class="corridor-guests" id="corridor-guests" aria-live="polite">
+                    {initialCorridor.map((p) => (
+                      <span
+                        class="party-guest corridor-guest"
+                        data-person-id={p.personId}
+                        data-name={p.name}
+                        data-avatar={p.avatar}
+                        title={p.name}
+                      >
+                        <span class="party-avatar-circle">
+                          <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(p.avatar)} />
+                        </span>
+                        <span class="party-guest-name">{p.name}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <span class="corridor-empty" id="corridor-empty" hidden={initialCorridor.length > 0 || inPartyRoom}>
+                    no one else in the corridor
+                  </span>
+                </div>
+                <a class="street-door" id="street-door" href="/houses" title="out to the street: all your houses">
+                  <svg class="street-door-art" viewBox="0 0 64 96" aria-hidden="true">
+                    <rect x="2" y="2" width="60" height="94" rx="4" class="sd-frame" />
+                    <rect x="8" y="8" width="48" height="88" rx="2" class="sd-outside" />
+                    <rect x="8" y="58" width="48" height="38" class="sd-grass" />
+                    <rect x="8" y="76" width="48" height="20" class="sd-path" />
+                    <circle cx="44" cy="22" r="6" class="sd-sun" />
+                    <path d="M14 58 L22 46 L30 58 Z M30 58 L40 42 L50 58 Z" class="sd-tree" />
+                    <path d="M56 8 L66 14 L66 98 L56 96 Z" class="sd-door-open" />
+                    <circle cx="62" cy="58" r="1.8" class="sd-knob" />
+                  </svg>
+                  <span class="street-door-label">street</span>
+                </a>
+              </div>
+
+              <div class="party-widget">
+                <div class="party-head">
+                  <h2>🎉 the party room</h2>
+                  <p class="party-hint">drag your avatar in to say you're free to hang out for a couple of hours</p>
+                </div>
+                <div class="party-room-dropzone" id="party-room-dropzone">
+                  {/* the room itself: pure decoration, pointer-events:none, so the
+                      whole dropzone box stays the drop target (party-drag.ts
+                      hit-tests the dropzone's rect, not these shapes) */}
+                  <div class="room-scene" aria-hidden="true">
+                    <div class="room-floor"></div>
+                    <div class="room-rug"></div>
+                    <svg class="room-bunting" width="100%" height="26">
+                      <defs>
+                        <pattern id="room-flags" width="90" height="26" patternUnits="userSpaceOnUse">
+                          <path d="M0 4 Q45 20 90 4" fill="none" class="room-cord" stroke-width="1.5" />
+                          <path d="M8 6.6 L28 10.8 L18 24 Z" class="room-flag-a" />
+                          <path d="M35 11.6 L55 11.6 L45 25 Z" class="room-flag-b" />
+                          <path d="M62 10.8 L82 6.6 L72 24 Z" class="room-flag-c" />
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="26" fill="url(#room-flags)" />
+                    </svg>
+                    <svg class="room-window" viewBox="0 0 60 70">
+                      <rect x="10" y="4" width="40" height="50" rx="3" class="room-trim-fill" />
+                      <rect x="14" y="8" width="32" height="42" rx="1.5" class="room-sky-fill" />
+                      <circle cx="37" cy="21" r="6" class="room-sun-fill" />
+                      <path d="M14 50 L14 40 Q22 33 30 40 Q38 33 46 40 L46 50 Z" class="room-hill-fill" />
+                      <path d="M30 8 V50 M14 29 H46" class="room-trim-line" stroke-width="2.5" />
+                      <path d="M4 3 H18 Q16 28 18 56 H4 Z" class="room-curtain-fill" />
+                      <path d="M56 3 H42 Q44 28 42 56 H56 Z" class="room-curtain-fill" />
+                      <rect x="6" y="54" width="48" height="5" rx="2" class="room-trim-fill" />
+                    </svg>
+                    <svg class="room-balloons" viewBox="0 0 54 80">
+                      <path d="M16 30 Q22 55 27 76 M38 28 Q32 55 27 76 M27 22 Q26 50 27 76" fill="none" class="room-cord" stroke-width="1" />
+                      <ellipse cx="16" cy="20" rx="10" ry="12" class="room-balloon-a" />
+                      <ellipse cx="38" cy="18" rx="10" ry="12" class="room-balloon-b" />
+                      <ellipse cx="27" cy="12" rx="10" ry="12" class="room-balloon-c" />
+                      <ellipse cx="23" cy="8" rx="2.5" ry="3.5" class="room-shine" />
+                      <ellipse cx="12" cy="16" rx="2.2" ry="3" class="room-shine" />
+                      <ellipse cx="34" cy="14" rx="2.2" ry="3" class="room-shine" />
+                    </svg>
+                    <svg class="room-sofa" viewBox="0 0 100 46">
+                      <rect x="8" y="4" width="84" height="26" rx="10" class="room-sofa-back" />
+                      <rect x="0" y="18" width="20" height="24" rx="8" class="room-sofa-arm" />
+                      <rect x="80" y="18" width="20" height="24" rx="8" class="room-sofa-arm" />
+                      <rect x="16" y="22" width="68" height="16" rx="6" class="room-sofa-seat" />
+                      <rect x="8" y="40" width="5" height="6" rx="1" class="room-trim-fill" />
+                      <rect x="87" y="40" width="5" height="6" rx="1" class="room-trim-fill" />
+                    </svg>
+                    <div class="room-lamp-glow"></div>
+                    <svg class="room-lamp" viewBox="0 0 34 90">
+                      <path d="M9 4 H25 L31 28 H3 Z" class="room-lamp-fill" />
+                      <rect x="15.5" y="28" width="3" height="52" class="room-trim-fill" />
+                      <ellipse cx="17" cy="82" rx="11" ry="4.5" class="room-trim-fill" />
+                    </svg>
+                  </div>
+                  <span class="party-room-empty" id="party-room-empty" hidden={initialPartyGuests.length > 0}>
+                    no one's in the room yet
+                  </span>
+                  <div class="party-room-guests" id="party-room-guests">
+                    {initialPartyGuests.map((g) => (
+                      <span
+                        class="party-guest party-room-avatar"
+                        data-person-id={g.personId}
+                        data-own={g.personId === person.id ? "true" : undefined}
+                        title={g.name}
+                      >
+                        <span class="party-avatar-circle">
+                          <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(g.avatar)} />
+                        </span>
+                        <span class="party-guest-name">{g.name}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+            <a class="edit-avatar-link" href={`/avatar?${new URLSearchParams({ next: here })}`}>edit my avatar</a>
+
+            <div class="plant-widget">
+              <button id="water-can" aria-label="water the plant" data-threshold={health?.threshold}>
+                <svg class="can-icon" viewBox="0 0 64 48" aria-hidden="true">
+                  <rect x="8" y="16" width="28" height="20" rx="6" fill="currentColor" />
+                  <path
+                    d="M13 16 C13 6 31 6 31 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    d="M34 22 L54 10"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="5"
+                    stroke-linecap="round"
+                  />
+                  <circle cx="56" cy="8" r="4" fill="currentColor" />
+                </svg>
+                <span class="drop" style="--i: 0" />
+                <span class="drop" style="--i: 1" />
+                <span class="drop" style="--i: 2" />
+              </button>
+              <div id="plant" data-stage={health?.stage}>
+                <svg viewBox="0 0 64 64" aria-hidden="true" set:html={plantSvgForStage(health?.stage ?? "wilting")} />
+              </div>
+              <div class="plant-info">
+                <h2>
+                  <button type="button" id="plant-name" title="rename">{plantDisplayName}</button>
+                  <form id="rename-plant-form" hidden>
+                    <input
+                      name="name"
+                      value={plantDisplayName}
+                      maxlength={MAX_NAME_LENGTH}
+                      aria-label="rename the plant"
+                    />
+                    <button type="submit" aria-label="save name">✓</button>
+                  </form>
+                </h2>
+                <p id="plant-stage">
+                  {health?.waterersThisWeek} of {health?.threshold} this week
+                </p>
+              </div>
+            </div>
+
+            <div class="canvas-widget">
+              <h2>
+                <button type="button" id="canvas-name" title="rename">{canvasDisplayName}</button>
+                <form id="rename-canvas-form" hidden>
+                  <input
+                    name="name"
+                    value={canvasDisplayName}
+                    maxlength={MAX_CANVAS_NAME_LENGTH}
+                    aria-label="rename the wall"
+                  />
+                  <button type="submit" aria-label="save name">✓</button>
+                </form>
+              </h2>
+              <div class="canvas-wrap">
+                <svg
+                  id="pixel-canvas"
+                  viewBox={`0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`}
+                  role="img"
+                  aria-label="a shared pixel canvas everyone can paint on, one cell at a time"
+                >
+                  {Array.from({ length: CANVAS_SIZE }).map((_, y) =>
+                    Array.from({ length: CANVAS_SIZE }).map((_, x) => (
+                      <rect
+                        x={x}
+                        y={y}
+                        width="1"
+                        height="1"
+                        fill={PALETTE[pixelByCoord.get(`${x},${y}`) ?? 0]?.hex ?? "#ffffff"}
+                        data-x={x}
+                        data-y={y}
+                      />
+                    )),
+                  )}
+                </svg>
+              </div>
+              <div class="canvas-controls">
+                <div class="canvas-palette" role="radiogroup" aria-label="pixel colour">
+                  {PALETTE.map((c, i) => (
+                    <button
+                      type="button"
+                      class="canvas-swatch"
+                      data-color-index={i}
+                      aria-pressed={i === 0}
+                      aria-label={`colour ${i + 1}`}
+                      style={`background:${c.hex}`}
+                    />
+                  ))}
+                </div>
+                <p id="canvas-cooldown" data-cooldown={myCanvasCooldown}>
+                  {myCanvasCooldown > 0 ? `wait ${myCanvasCooldown}s to place again` : "ready to place"}
+                </p>
+                <p id="canvas-level">
+                  {myActivity && `level ${myActivity.level} · you can place every ${myActivity.cooldownSeconds}s`}
+                </p>
+              </div>
+            </div>
+
+            <form
+              id="compose-form"
+              method="post"
+              action={`/api/posts?${new URLSearchParams({ house: house.slug })}`}
+              enctype="multipart/form-data"
+            >
+              <select name="category" required>
+                <option value="emotional">feeling</option>
+                <option value="practical">doing</option>
+              </select>
+              <textarea name="body" placeholder="a little update..." required maxlength="2000" />
+              <input type="file" name="images" accept="image/*" multiple />
+              <button type="submit">post</button>
+            </form>
+
+            <div class="sort-toggle">
+              <a href={here} aria-current={sort === "new" ? "page" : undefined}>
+                newest
+              </a>
+              <a href={`${here}?sort=extreme`} aria-current={sort === "extreme" ? "page" : undefined}>
+                extremest 🔥❄️
+              </a>
+            </div>
+
+            <div class="feed">
+              {feedView.map((post) => (
+              <article class={`post post-${post.category}`} data-post-id={post.id}>
+                <div class="post-main">
+                  <header>
+                    <span class="avatar">
+                      <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(post.authorAvatar)} />
+                    </span>
+                    <strong>{post.authorName}</strong>
+                    <span class={`category-tag category-${post.category}`}>
+                      {CATEGORY_LABEL[post.category] ?? post.category}
+                    </span>
+                    <time>{new Date(post.createdAt * 1000).toLocaleDateString()}</time>
+                    {post.authorId === person.id && (
+                      <button type="button" class="delete-post" data-post-id={post.id}>
+                        delete
+                      </button>
+                    )}
+                  </header>
+                  <p>{post.body}</p>
+                  {images[post.id]?.length > 0 && (
+                    <div class="post-images">
+                      {images[post.id].map((path) => (
+                        <img src={`/uploads/${path}`} alt="" loading="lazy" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div class="post-temp" data-post-id={post.id}>
+                  <span class="temp-emoji" aria-hidden="true">
+                    {emojiForScore(post.myScore)}
+                  </span>
+                  <div class="temp-stack" style={`width:${STRIP_W}px;height:${STRIP_H}px`}>
+                    <svg
+                      class="temp-strip"
+                      viewBox={`0 0 ${STRIP_W} ${STRIP_H}`}
+                      width={STRIP_W}
+                      height={STRIP_H}
+                      role="img"
+                      aria-label={post.stripLabel}
+                    >
+                      {post.dots.map((d) => (
+                        <circle cx={d.x} cy={d.y} r="4" fill={d.color} stroke="var(--card)" stroke-width="2" />
+                      ))}
+                      {post.medianY !== null && (
+                        <line
+                          x1="1"
+                          y1={post.medianY}
+                          x2={STRIP_W - 1}
+                          y2={post.medianY}
+                          class="temp-median-tick"
+                        />
+                      )}
+                    </svg>
+                    <div class="temp-slider-wrap" style={`width:${STRIP_H}px`}>
+                      <input
+                        type="range"
+                        class="temp-slider"
+                        data-post-id={post.id}
+                        min={SCORE_MIN}
+                        max={SCORE_MAX}
+                        step="1"
+                        value={post.myScore}
+                        aria-label={`rate this post from freezing to on fire; ${post.stripLabel}`}
+                      />
+                    </div>
+                  </div>
+                  <span class="temp-median-label" title={post.medianTitle}>
+                    {post.medianEmoji}
+                  </span>
+                </div>
+              </article>
+              ))}
+            </div>
+    </main>
+    <script src="../../scripts/water-plant.ts" />
+    <script src="../../scripts/compress-image.ts" />
+    <script src="../../scripts/temperature-slider.ts" />
+    <script src="../../scripts/delete-post.ts" />
+    <script src="../../scripts/pixel-canvas.ts" />
+    <script src="../../scripts/party-drag.ts" />
+    <script src="../../scripts/invite.ts" />
+    <script src="../../scripts/live.ts" />
+  </body>
+</html>

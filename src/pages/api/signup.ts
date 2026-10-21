@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { logAction } from "../../lib/audit";
+import { safeNext } from "../../lib/houses";
 import { cleanName, createAccount, nameTaken, startSession, validateName, validatePassword } from "../../lib/identity";
 import { parseSignupAvatar } from "../../lib/signup-avatar";
 
@@ -19,10 +20,12 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const password = String(form.get("password") ?? "");
   const confirm = String(form.get("confirm") ?? "");
   const avatar = parseSignupAvatar(form);
+  const next = safeNext(String(form.get("next") ?? ""));
 
   const back = (error: string) => {
     const q = new URLSearchParams({ error, name });
     if (avatar) q.set("avatar", avatar);
+    if (next) q.set("next", next);
     return redirect(`/signup?${q}`, 303);
   };
 
@@ -37,5 +40,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
 
   startSession(cookies, person.id);
   logAction(person, "person_signup", `name=${name} avatar=${avatar}`);
-  return redirect("/", 303);
+  // A brand-new account belongs to no house yet, so "/" forwards it to the
+  // street page --- unless it came from an invite link, which it goes back to.
+  return redirect(next ?? "/", 303);
 };

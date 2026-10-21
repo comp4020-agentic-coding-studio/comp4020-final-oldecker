@@ -1,0 +1,517 @@
+---
+// The street: every house you belong to, drawn as a row of little houses
+// along a pavement, plus an empty plot to build a new one and a signpost to
+// visit one by name. Drag your avatar onto a house (or just tap it) to go
+// in. Only YOUR houses are on your street --- the page lists nothing about
+// any house you aren't a member of, not even that it exists.
+import "../styles/tokens.css";
+import HouseFront from "../components/HouseFront.astro";
+import { presentCount } from "../lib/events";
+import { renderAvatarSvg } from "../lib/face";
+import { housesOf, MAX_HOUSE_NAME_LENGTH, memberCounts, MIN_HOUSE_NAME_LENGTH } from "../lib/houses";
+import { currentPerson } from "../lib/identity";
+
+export const prerender = false;
+
+const person = currentPerson(Astro.cookies);
+if (!person) return Astro.redirect("/login");
+
+const mine = housesOf(person.id);
+const counts = memberCounts(mine.map((h) => h.id));
+const street = mine.map((h) => ({
+  ...h,
+  href: `/h/${encodeURIComponent(h.slug)}`,
+  members: counts.get(h.id) ?? 1,
+  // windows lit when someone has the house open right now
+  lit: presentCount(h.id) > 0,
+}));
+
+const errorCode = Astro.url.searchParams.get("error");
+const triedName = Astro.url.searchParams.get("name") ?? "";
+const triedVisit = Astro.url.searchParams.get("visit") ?? "";
+// Codes, not free text, come through the URL (same as /login's).
+const messages: Record<string, string> = {
+  "house-name-invalid": `House names need ${MIN_HOUSE_NAME_LENGTH} to ${MAX_HOUSE_NAME_LENGTH} characters, with at least one letter or number.`,
+  "house-name-taken": "There's already a house with that name. Pick another, or visit it by name.",
+  "no-such-house": "No house goes by that name. Check the spelling, or ask for an invite link.",
+  "bad-invite": "That invite link doesn't open any house.",
+};
+const error = errorCode ? (messages[errorCode] ?? null) : null;
+const buildError = errorCode?.startsWith("house-name") ? error : null;
+const visitError = buildError ? null : error;
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>the street · the board</title>
+  </head>
+  <body>
+    <main class="street-page">
+      <header class="street-bar">
+        <h1>the street</h1>
+        <form method="post" action="/api/logout">
+          <button type="submit" class="quiet-pill" title={`logged in as ${person.name}`}>log out</button>
+        </form>
+      </header>
+      <p class="street-lede">
+        {
+          street.length === 0
+            ? "You don't live anywhere yet. Build a house, or visit one by its name."
+            : "Your houses. Drag yourself onto one to go in, or just tap it."
+        }
+      </p>
+      {visitError && !buildError && <p class="street-error" role="alert">{visitError}</p>}
+
+      <section class="street" aria-label="your houses">
+        <div class="street-sky" aria-hidden="true">
+          <svg class="cloud cloud-a" viewBox="0 0 80 30"><path d="M10 26 Q2 26 4 18 Q6 10 16 13 Q20 2 34 6 Q44 0 52 9 Q66 6 68 17 Q78 18 75 26 Z" /></svg>
+          <svg class="cloud cloud-b" viewBox="0 0 80 30"><path d="M10 26 Q2 26 4 18 Q6 10 16 13 Q20 2 34 6 Q44 0 52 9 Q66 6 68 17 Q78 18 75 26 Z" /></svg>
+          <svg class="sun" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" /></svg>
+        </div>
+
+        <div class="street-row" id="street-row">
+          {
+            street.map((h) => (
+              <a class="lot house-lot" href={h.href} data-href={h.href} title={`go into ${h.name}`}>
+                <HouseFront paint={h.id} lit={h.lit} class="lot-house" />
+                <span class="lot-sign">
+                  <span class="lot-name">{h.name}</span>
+                  <span class="lot-meta">
+                    {h.members} {h.members === 1 ? "lives" : "live"} here{h.lit ? " · someone's in" : ""}
+                  </span>
+                </span>
+              </a>
+            ))
+          }
+
+          <div class="lot plot-lot" id="build">
+            <svg class="plot-art" viewBox="0 0 120 120" aria-hidden="true">
+              <path d="M14 114 V82 M106 114 V82" class="fence-line" stroke-width="4" stroke-linecap="round" />
+              <path d="M14 90 H106 M14 104 H106" class="fence-line" stroke-width="3" />
+              <path d="M30 114 V86 M46 114 V86 M62 114 V86 M78 114 V86 M94 114 V86" class="fence-line" stroke-width="3" stroke-linecap="round" />
+              <path d="M38 70 L60 52 L82 70" fill="none" class="plot-outline" stroke-width="2.5" stroke-dasharray="5 4" />
+              <rect x="42" y="70" width="36" height="30" fill="none" class="plot-outline" stroke-width="2.5" stroke-dasharray="5 4" />
+              <path d="M60 36 V20 M54 26 H66" class="plot-plus" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <form class="lot-form" method="post" action="/api/houses">
+              <label for="build-name">build a new house</label>
+              {buildError && <span class="lot-error" role="alert">{buildError}</span>}
+              <input
+                id="build-name"
+                name="name"
+                value={buildError ? triedName : ""}
+                placeholder="its name"
+                minlength={MIN_HOUSE_NAME_LENGTH}
+                maxlength={MAX_HOUSE_NAME_LENGTH}
+                required
+                autofocus={street.length === 0}
+              />
+              <button type="submit">build</button>
+            </form>
+          </div>
+
+          <div class="lot sign-lot" id="visit">
+            <svg class="sign-art" viewBox="0 0 120 120" aria-hidden="true">
+              <rect x="56" y="30" width="8" height="86" rx="2" class="sign-post" />
+              <path d="M18 34 H92 L104 44 L92 54 H18 Z" class="sign-board" />
+              <path d="M102 62 H28 L16 72 L28 82 H102 Z" class="sign-board alt" />
+              <ellipse cx="60" cy="116" rx="18" ry="4" class="sign-shadow" />
+            </svg>
+            <form class="lot-form" method="post" action="/api/houses/join">
+              <label for="visit-name">visit by name</label>
+              <input
+                id="visit-name"
+                name="name"
+                value={triedVisit}
+                placeholder="a house's name"
+                maxlength="60"
+                required
+              />
+              <button type="submit">visit</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="street-ground" aria-hidden="true">
+          <div class="street-grass"></div>
+          <div class="street-pavement"></div>
+          <div class="street-road"></div>
+        </div>
+
+        <div class="street-you">
+          <span
+            id="street-you"
+            class="street-avatar"
+            title={street.length ? "drag me onto a house" : "that's you"}
+            data-draggable={street.length ? "true" : undefined}
+          >
+            <span class="street-avatar-circle">
+              <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
+            </span>
+            <span class="street-avatar-name">{person.name}</span>
+          </span>
+          <a class="street-edit" href="/avatar">edit my avatar</a>
+        </div>
+      </section>
+    </main>
+    <script src="../scripts/street.ts" />
+  </body>
+</html>
+
+<style>
+  .street-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 3rem;
+  }
+  .street-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+  }
+  .street-bar h1 {
+    margin: 0;
+    font-size: 1.5rem;
+  }
+  .street-bar form {
+    margin: 0;
+  }
+  .quiet-pill {
+    padding: 0.25rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .street-lede {
+    margin: 0.2rem 0 1rem;
+    color: var(--text-muted);
+  }
+  .street-error,
+  .lot-error {
+    margin: 0 0 0.8rem;
+    padding: 0.5rem 0.8rem;
+    border-radius: 0.5rem;
+    background: var(--danger-bg);
+    color: var(--danger);
+    font-size: 0.85rem;
+  }
+  .lot-error {
+    margin: 0;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  /* --- the scene: one card, sky at the top, ground at the bottom, and the
+     row of lots standing on the grass line between them. */
+  .street {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 1.2rem;
+    overflow: hidden;
+    background: linear-gradient(var(--street-sky-top), var(--street-sky-bottom) 70%);
+    padding-bottom: 6.2rem;
+  }
+  .street-sky {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .street-sky svg {
+    position: absolute;
+    display: block;
+  }
+  .cloud path {
+    fill: var(--street-cloud);
+    opacity: 0.9;
+  }
+  .cloud-a {
+    width: 7rem;
+    top: 1rem;
+    left: 8%;
+  }
+  .cloud-b {
+    width: 5rem;
+    top: 2.6rem;
+    left: 58%;
+    opacity: 0.8;
+  }
+  .sun {
+    width: 3.2rem;
+    top: 0.8rem;
+    right: 6%;
+  }
+  .sun circle {
+    fill: var(--room-sun);
+  }
+
+  /* The row: a horizontal strip of lots. It scrolls sideways inside itself
+     when there are more houses than fit (a phone, or a busy street) ---
+     never the page. min-width:0 on everything flex so nothing floors the
+     row at its content's width. */
+  .street-row {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    padding: 4.5rem 1.2rem 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+  .lot {
+    flex: 0 0 11rem;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    scroll-snap-align: start;
+  }
+  .house-lot {
+    color: inherit;
+    text-decoration: none;
+    border-radius: 1rem;
+    padding: 0.4rem 0.4rem 0;
+    transition:
+      transform 0.15s ease,
+      background 0.15s ease;
+  }
+  .house-lot :global(.lot-house) {
+    width: 9.5rem;
+    margin-bottom: -2px; /* stand ON the grass line, not above it */
+  }
+  .house-lot:hover,
+  .house-lot:focus-visible,
+  .house-lot:global(.drag-over) {
+    transform: translateY(-4px);
+  }
+  .house-lot:global(.drag-over) {
+    background: var(--room-hover-ring);
+    outline: 2px dashed var(--ink);
+    outline-offset: 2px;
+  }
+  /* the name sign planted in the front garden, in its own card-coloured
+     pill so it never has to be read off the grass */
+  .lot-sign {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    justify-items: center;
+    max-width: 100%;
+    margin-top: 0.4rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 0.7rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 0 var(--room-shadow);
+  }
+  .lot-name {
+    max-width: 100%;
+    font-weight: 600;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lot-meta {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  /* the empty plot and the signpost: same footprint as a house, art on
+     top, a small form in a card underneath */
+  .plot-art,
+  .sign-art {
+    width: 8rem;
+    display: block;
+    margin-bottom: -2px;
+  }
+  .fence-line {
+    stroke: var(--sign-wood);
+  }
+  .plot-outline {
+    stroke: var(--ink);
+    opacity: 0.45;
+  }
+  .plot-plus {
+    stroke: var(--party-accent);
+  }
+  .sign-post {
+    fill: var(--sign-wood-dark);
+  }
+  .sign-board {
+    fill: var(--sign-wood);
+  }
+  .sign-board.alt {
+    fill: var(--sign-wood-dark);
+  }
+  .sign-shadow {
+    fill: var(--room-shadow);
+  }
+  .lot-form {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    gap: 0.35rem;
+    width: 100%;
+    margin-top: 0.4rem;
+    padding: 0.55rem;
+    border-radius: 0.8rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 0 var(--room-shadow);
+  }
+  .lot-form label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .lot-form input {
+    width: 100%;
+    min-width: 0;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.9rem;
+  }
+  .lot-form button {
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    border: none;
+    background: var(--ink);
+    color: var(--bg);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  /* --- the ground: a grass verge, the pavement you stand on, the road */
+  .street-ground {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 6.2rem;
+    pointer-events: none;
+  }
+  .street-grass {
+    height: 1.4rem;
+    background: var(--street-grass);
+    border-top: 3px solid var(--street-grass-dark);
+  }
+  .street-pavement {
+    height: 2.8rem;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 58px, var(--street-pavement-line) 58px 60px),
+      var(--street-pavement);
+  }
+  .street-road {
+    height: 2rem;
+    background:
+      repeating-linear-gradient(90deg, var(--street-road-line) 0 26px, transparent 26px 56px) center / 100% 3px no-repeat,
+      var(--street-road);
+  }
+  /* the row's lots overlap the grass strip so houses stand on it */
+  .street-row {
+    margin-bottom: -1.4rem;
+  }
+
+  /* you, standing on the pavement */
+  .street-you {
+    position: absolute;
+    z-index: 3;
+    left: 1.2rem;
+    bottom: 2.15rem;
+    display: flex;
+    align-items: flex-end;
+    gap: 0.6rem;
+  }
+  .street-avatar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    width: 3.2rem;
+    touch-action: none;
+  }
+  .street-avatar[data-draggable] {
+    cursor: grab;
+  }
+  .street-avatar-circle {
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 50%;
+    border: 2.5px solid var(--ink);
+    background: var(--card);
+    overflow: hidden;
+    display: inline-flex;
+    box-shadow: 0 0.35rem 0 -0.1rem var(--room-shadow);
+  }
+  .street-avatar-circle svg {
+    width: 100%;
+    height: 100%;
+  }
+  .street-avatar-name {
+    max-width: 6rem;
+    padding: 0 0.35rem;
+    border-radius: 0.6rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-size: 0.7rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .street-edit {
+    margin-bottom: 0.2rem;
+    padding: 0 0.4rem;
+    border-radius: 0.5rem;
+    background: var(--card);
+    font-size: 0.7rem;
+    color: inherit;
+    opacity: 0.85;
+  }
+  /* the dragged copy --- always client-created, so :global */
+  :global(.party-drag-ghost) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.85;
+  }
+
+  @media (max-width: 520px) {
+    .street-row {
+      gap: 0.6rem;
+      padding: 4rem 0.8rem 0;
+    }
+    .lot {
+      flex-basis: 9.5rem;
+    }
+    .house-lot :global(.lot-house) {
+      width: 8rem;
+    }
+    .plot-art,
+    .sign-art {
+      width: 6.5rem;
+    }
+    .cloud-b {
+      display: none;
+    }
+  }
+</style>

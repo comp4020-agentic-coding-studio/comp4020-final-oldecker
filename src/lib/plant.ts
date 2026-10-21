@@ -6,13 +6,12 @@
 // fixed calendar week (Monday 00:00, Australia/Canberra), not a rolling
 // lookback --- see mostRecentCanberraMonday() in week.ts, and PROCESS.md
 // for why that changed from this file's original rolling-7-day version.
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { plant, waterings } from "./schema";
 import { mostRecentCanberraMonday } from "./week";
 
 export const WEEKLY_THRESHOLD = 5;
-const PLANT_ID = 1; // one shared plant, one row
 const DEFAULT_NAME = "the plant";
 export const MAX_NAME_LENGTH = 30;
 
@@ -26,12 +25,13 @@ export interface PlantHealth {
   stage: PlantStage;
 }
 
-export function plantHealth(): PlantHealth {
+// Every house has its own plant: same mechanic, its own waterings.
+export function plantHealth(houseId: number): PlantHealth {
   const since = mostRecentCanberraMonday();
   const row = db
     .select({ count: sql<number>`count(distinct ${waterings.personId})` })
     .from(waterings)
-    .where(sql`${waterings.wateredAt} >= ${since}`)
+    .where(and(eq(waterings.houseId, houseId), sql`${waterings.wateredAt} >= ${since}`))
     .get();
   const waterersThisWeek = row?.count ?? 0;
   const ratio = waterersThisWeek / WEEKLY_THRESHOLD;
@@ -41,17 +41,20 @@ export function plantHealth(): PlantHealth {
   return { waterersThisWeek, threshold: WEEKLY_THRESHOLD, ratio, stage };
 }
 
-export function recordWatering(personId: string): void {
-  db.insert(waterings).values({ personId }).run();
+export function recordWatering(houseId: number, personId: string): void {
+  db.insert(waterings).values({ houseId, personId }).run();
 }
 
-export function plantName(): string {
-  return db.select({ name: plant.name }).from(plant).where(eq(plant.id, PLANT_ID)).get()?.name ?? DEFAULT_NAME;
+export function plantName(houseId: number): string {
+  return db.select({ name: plant.name }).from(plant).where(eq(plant.houseId, houseId)).get()?.name ?? DEFAULT_NAME;
 }
 
-export function setPlantName(name: string): void {
+// Upsert on house_id (unique), so a house's first rename creates its row
+// and every later one updates it --- the pre-houses row (id 1) simply
+// belongs to the first house.
+export function setPlantName(houseId: number, name: string): void {
   db.insert(plant)
-    .values({ id: PLANT_ID, name })
-    .onConflictDoUpdate({ target: plant.id, set: { name, updatedAt: sql`(unixepoch())` } })
+    .values({ houseId, name })
+    .onConflictDoUpdate({ target: plant.houseId, set: { name, updatedAt: sql`(unixepoch())` } })
     .run();
 }
