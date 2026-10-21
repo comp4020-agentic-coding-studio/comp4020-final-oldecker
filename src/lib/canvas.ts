@@ -6,6 +6,8 @@
 // plant-art.ts/temperature.ts): this has to be safe to bundle for the
 // browser too.
 export const CANVAS_SIZE = 32;
+// The base (level 1) cooldown; a person's real one comes from their private
+// activity level (src/lib/activity.ts, server-only).
 export const PLACE_COOLDOWN_SECONDS = 30;
 
 // A small, fixed palette rather than a free colour picker --- same "legible
@@ -37,7 +39,11 @@ export function isValidColorIndex(n: number): boolean {
 }
 
 /** Seconds still to wait, given the last placement's unix timestamp; 0 once the cooldown has fully elapsed. */
-export function cooldownRemaining(lastPlacedAt: number | null, nowSeconds: number = Math.floor(Date.now() / 1000)): number {
+export function cooldownRemaining(
+  lastPlacedAt: number | null,
+  cooldownSeconds: number = PLACE_COOLDOWN_SECONDS,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): number {
   if (lastPlacedAt === null) return 0;
-  return Math.max(0, PLACE_COOLDOWN_SECONDS - (nowSeconds - lastPlacedAt));
+  return Math.max(0, cooldownSeconds - (nowSeconds - lastPlacedAt));
 }

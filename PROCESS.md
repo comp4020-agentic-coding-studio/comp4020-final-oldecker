@@ -398,3 +398,38 @@ fixed code the ghost kept following the cursor through the mid-drag DOM
 replacement and was gone on mouseup. The two normal flows --- dropping
 inside the zone to join, dropping outside to no-op --- were re-checked the
 same way and are unaffected.
+
+---
+
+## Activity level: a private reward, derived not stored
+
+The wall's pixel cooldown used to be a flat 30 seconds for everyone. It now
+shrinks with how much you've taken part in the board lately, down to 10
+seconds. The level is shown only to the person themselves, next to the
+cooldown label ("level 3 · you can place every 18s"); no one else's page
+carries it and there is no ranking, for the same reason as the streaks
+decision above: a public number to compete over is the harm to avoid, and
+here it would also tell everyone who's been quiet.
+
+**The formula** (`src/lib/activity.ts`): over the last 7 days of `audit_log`,
+each *distinct action type on each distinct UTC day* earns that action's
+weight once: posting 4, watering the plant 3, rating a post 2, joining the
+party room 2, placing a pixel 1. Points map to levels at 0/4/10/18/28, which
+give cooldowns of 30/24/18/14/10 seconds. It is computed at read time on
+every page render and every placement, like `plantHealth()`: no counter, no
+cron, no schema change, and it decays by itself as days fall out of the window.
+
+**Anti-farming:** counting distinct days rather than raw rows means twenty
+ratings in a minute are worth exactly one rating, so nothing can be spammed
+up the ladder; the most any one action can give is 7 times its weight. The
+only way to the top (28 points) is to do several different things across
+several days, which is the "show up regularly" behaviour the streaks section
+wanted. Pixels are weighted 1 so painting alone caps at 7 points (level 2):
+the wall can't be levelled up by painting the wall.
+
+**Server is the authority:** `/api/canvas/pixel` derives the level itself and
+returns `cooldownSeconds` and `level` in both its success and 429 responses;
+the client only displays and counts down what it is told. Because a
+placement is itself activity, the success response is computed after the
+row is written, so the placement that tips you into a new level starts its
+countdown at the new, shorter cooldown.
