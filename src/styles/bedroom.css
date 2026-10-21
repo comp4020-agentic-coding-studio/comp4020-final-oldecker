@@ -213,11 +213,19 @@
   opacity: 0.25;
   fill: none;
 }
-/* the head on the pillow, the blanket tucked up to the chin */
-.bunk-head {
+/* the head on the pillow, the blanket tucked up to the chin. The head sits
+   inside its level flair (src/styles/levels.css: badge + ring), so the
+   flair is what's positioned and what tilts/sits up, carrying the badge
+   with the head; the head itself only dims when asleep. */
+.bunk > .lvl-flair {
   position: absolute;
   left: calc(3 * var(--u));
   top: calc(-5 * var(--u));
+  transition: transform 0.25s ease;
+}
+.bunk-head {
+  position: relative;
+  display: block;
   width: calc(25 * var(--u));
   height: calc(25 * var(--u));
   border-radius: 50%;
@@ -225,7 +233,6 @@
   background: var(--card);
   border: 2px solid var(--bed-pillow-edge);
   transition:
-    transform 0.25s ease,
     opacity 0.25s ease,
     filter 0.25s ease;
 }
@@ -255,6 +262,8 @@
 .bunk[data-state="asleep"] .bunk-head {
   opacity: 0.6;
   filter: grayscale(0.5);
+}
+.bunk[data-state="asleep"] > .lvl-flair {
   transform: rotate(-14deg) translateY(calc(2 * var(--u)));
 }
 .bunk[data-state="asleep"] .bunk-name {
@@ -293,6 +302,8 @@
   border-color: var(--bed-awake);
   border-width: 2.5px;
   box-shadow: 0 0 0 4px var(--bed-awake-glow);
+}
+.bunk[data-state="awake"] > .lvl-flair {
   transform: translateY(calc(-3 * var(--u)));
 }
 .bunk[data-state="awake"] .bunk-name {
@@ -305,8 +316,21 @@
 .bunk[data-person-id]:not([data-own]) {
   cursor: pointer;
 }
-.bunk[data-person-id]:not([data-own]):hover .bunk-head {
+.bunk[data-person-id]:not([data-own]):hover > .lvl-flair {
   transform: translateY(calc(-4 * var(--u))) scale(1.06);
+}
+/* the name tag starts right where the head ends, so the bunk's badge sits on
+   the head's lower LEFT (over the pillow) instead of the usual lower right,
+   and a touch smaller, so it never covers the name */
+.bunk .lvl-badge {
+  right: auto;
+  left: -0.3rem;
+  bottom: -0.2rem;
+  min-width: 0.8rem;
+  height: 0.8rem;
+  padding: 0 0.15rem;
+  font-size: 0.5rem;
+  line-height: calc(0.8rem - 3px);
 }
 .bunk-empty .bed-blanket,
 .bunk-empty .bed-blanket-fold {

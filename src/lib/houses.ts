@@ -12,6 +12,7 @@
 import { randomBytes } from "node:crypto";
 import type { AstroCookies } from "astro";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { activityLevel } from "./activity";
 import { db } from "./db";
 import { broadcast } from "./events";
 import { currentPerson, type Person } from "./identity";
@@ -117,7 +118,11 @@ export function addMember(houseId: number, personId: string): boolean {
       .from(people)
       .where(eq(people.id, personId))
       .get();
-    if (who) broadcast(houseId, { type: "member_joined", data: { personId, ...who } });
+    if (who)
+      broadcast(houseId, {
+        type: "member_joined",
+        data: { personId, ...who, level: activityLevel(personId).level },
+      });
   }
   return !!row;
 }

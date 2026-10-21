@@ -41,10 +41,10 @@ export const POST: APIRoute = async ({ request, cookies, url }) => {
     .limit(1)
     .get();
 
-  const { level, cooldownSeconds } = activityLevel(person.id);
+  const { level, points, cooldownSeconds } = activityLevel(person.id);
   const remaining = cooldownRemaining(last?.createdAt ?? null, cooldownSeconds);
   if (remaining > 0)
-    return new Response(JSON.stringify({ remaining, cooldownSeconds, level }), {
+    return new Response(JSON.stringify({ remaining, cooldownSeconds, level, points }), {
       status: 429,
       headers: { "content-type": "application/json" },
     });
@@ -63,7 +63,14 @@ export const POST: APIRoute = async ({ request, cookies, url }) => {
   // Placing is itself (lightly) activity, so re-derive for the response.
   const after = activityLevel(person.id);
   return new Response(
-    JSON.stringify({ x, y, colorIndex: color, cooldownSeconds: after.cooldownSeconds, level: after.level }),
+    JSON.stringify({
+      x,
+      y,
+      colorIndex: color,
+      cooldownSeconds: after.cooldownSeconds,
+      level: after.level,
+      points: after.points,
+    }),
     { headers: { "content-type": "application/json" } },
   );
 };

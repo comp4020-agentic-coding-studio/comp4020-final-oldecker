@@ -10,6 +10,7 @@ import type { Sleeper } from "../lib/bedroom";
 import { applyBedroomPresence, applyMemberJoined } from "./bedroom-dom";
 import { applyCanvasName } from "./canvas-dom";
 import { source } from "./house-events";
+import { applyLevel } from "./level-dom";
 import {
   applyPartyJoin,
   applyPartyLeave,
@@ -79,6 +80,18 @@ source.addEventListener("party_joined", (e) => {
 
 source.addEventListener("party_left", (e) => {
   applyPartyLeave((JSON.parse((e as MessageEvent).data) as { personId: string }).personId, ownPersonId);
+});
+
+// Someone in this house earned points (maybe you, from another tab or
+// action): their badge, ring and leaderboard row, and if it's you, your
+// progress bar and maybe a level-up toast. See level-dom.ts.
+source.addEventListener("level", (e) => {
+  const { personId, level, points } = JSON.parse((e as MessageEvent).data) as {
+    personId: string;
+    level: number;
+    points: number;
+  };
+  applyLevel(personId, level, points);
 });
 
 source.addEventListener("party_snapshot", (e) => {

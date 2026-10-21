@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { activityLevel } from "../../../lib/activity";
 import { logAction } from "../../../lib/audit";
 import { broadcast } from "../../../lib/events";
 import { houseAccess } from "../../../lib/houses";
@@ -22,9 +23,11 @@ export const POST: APIRoute = async ({ cookies, url }) => {
 
   const { expiresAt } = joinParty(house.id, person.id);
   logAction(person, "party_join", `house=${house.slug} expiresAt=${expiresAt}`);
+  // After the log line, so joining's own points are already counted.
+  const { level } = activityLevel(person.id);
   broadcast(house.id, {
     type: "party_joined",
-    data: { personId: person.id, name: person.name, avatar: person.avatar, expiresAt },
+    data: { personId: person.id, name: person.name, avatar: person.avatar, expiresAt, level },
   });
-  return new Response(JSON.stringify({ expiresAt }), { headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify({ expiresAt, level }), { headers: { "content-type": "application/json" } });
 };

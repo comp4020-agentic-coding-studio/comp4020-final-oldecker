@@ -10,11 +10,14 @@
 // comes online. An odd number leaves the last top bunk made but empty.
 import { renderAvatarSvg } from "./face";
 import { escapeHtml } from "./html";
+import { clampLevel, flairHtml } from "./levels";
 
 export interface Sleeper {
   personId: string;
   name: string;
   avatar: string;
+  // public activity level, for the same badge and ring the corridor shows
+  level?: number;
 }
 
 // The bed itself, in a 128x150 box (1 unit = --u in bedroom.css): two posts,
@@ -45,13 +48,17 @@ const BEDDING = `<svg class="bunk-bedding" viewBox="0 0 94 34" aria-hidden="true
 <path d="M27 31.5h65" class="bed-blanket-hem"/>
 </svg>`;
 
-function bunkHtml(who: Sleeper | undefined, level: "top" | "bottom", awake: Set<string>, ownId: string): string {
-  if (!who) return `<div class="bunk bunk-${level} bunk-empty">${BEDDING}</div>`;
+function bunkHtml(who: Sleeper | undefined, bunk: "top" | "bottom", awake: Set<string>, ownId: string): string {
+  if (!who) return `<div class="bunk bunk-${bunk} bunk-empty">${BEDDING}</div>`;
   const isOwn = who.personId === ownId;
   const isAwake = isOwn || awake.has(who.personId);
   const label = isOwn ? "you" : who.name;
   const state = isAwake ? "awake" : "asleep";
-  return `<div class="bunk bunk-${level}" data-person-id="${escapeHtml(who.personId)}" data-name="${escapeHtml(who.name)}" data-state="${state}"${isOwn ? ' data-own="true"' : ""} title="${escapeHtml(`${who.name} · ${isAwake ? "awake, in the house now" : "asleep"}`)}">${BEDDING}<span class="bunk-head"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(who.avatar)}</svg></span><span class="bunk-name">${escapeHtml(label)}</span>${isAwake ? "" : '<span class="bunk-z" aria-hidden="true">z<i>z</i></span>'}</div>`;
+  const lv = clampLevel(who.level ?? 1);
+  // The head sits inside the level flair (badge + ring), the same wrapper
+  // the corridor and party chips use, so level-dom.ts updates it live.
+  const head = flairHtml(lv, `<span class="bunk-head"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(who.avatar)}</svg></span>`);
+  return `<div class="bunk bunk-${bunk}" data-person-id="${escapeHtml(who.personId)}" data-name="${escapeHtml(who.name)}" data-state="${state}"${isOwn ? ' data-own="true"' : ""} title="${escapeHtml(`${who.name} · level ${lv} · ${isAwake ? "awake, in the house now" : "asleep"}`)}">${BEDDING}${head}<span class="bunk-name">${escapeHtml(label)}</span>${isAwake ? "" : '<span class="bunk-z" aria-hidden="true">z<i>z</i></span>'}</div>`;
 }
 
 export function bedroomHtml(members: Sleeper[], awakeIds: Iterable<string>, ownId: string): string {
