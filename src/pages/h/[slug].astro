@@ -710,15 +710,10 @@ const CATEGORY_LABEL: Record<string, string> = {
       .corridor-head {
         position: relative;
         z-index: 1;
-        max-width: 22rem;
-      }
-      .corridor-head h2,
-      .corridor-hint {
-        display: inline;
-        background: color-mix(in srgb, var(--hall-wall) 80%, transparent);
+        /* the corridor's right padding (kept for the street door) also
+           leaves the top-right corner to the picture on the wall */
       }
       .corridor-hint {
-        display: block;
         margin-top: 0.15rem;
       }
       .corridor-scene {
@@ -770,15 +765,12 @@ const CATEGORY_LABEL: Record<string, string> = {
       .hall-door-a {
         right: 7.5rem;
       }
+      /* top-right, above the closed door: clear of the heading and hint,
+         which run along the top-left */
       .hall-art {
-        width: 3.2rem;
-        left: 46%;
-        top: 4.6rem;
-      }
-      .hall-lamp {
-        width: 2rem;
-        left: 30%;
-        top: 0;
+        width: 3.4rem;
+        right: 1.2rem;
+        top: 1rem;
       }
       .hall-frame-fill {
         fill: var(--hall-frame);
@@ -929,9 +921,10 @@ const CATEGORY_LABEL: Record<string, string> = {
         .street-door-art {
           width: 2.7rem;
         }
-        .hall-door-a,
-        .hall-art {
-          display: none;
+        /* the closed side door moves nearer the street door so it stays
+           behind the wainscot, out of the guests' way on a narrow floor */
+        .hall-door-a {
+          right: 5.6rem;
         }
       }
       /* flex children default to min-width:auto, which can floor them at
@@ -1574,11 +1567,6 @@ const CATEGORY_LABEL: Record<string, string> = {
                     <rect x="5" y="5" width="50" height="30" class="hall-art-bg" />
                     <circle cx="20" cy="17" r="6" class="hall-art-a" />
                     <path d="M5 35 L22 22 L32 30 L42 20 L55 32 L55 35 Z" class="hall-art-b" />
-                  </svg>
-                  <svg class="hall-lamp" viewBox="0 0 30 24">
-                    <path d="M15 0 V6" class="hall-frame-line" stroke-width="1.5" />
-                    <path d="M5 16 Q15 2 25 16 Z" class="hall-light-fill" />
-                    <ellipse cx="15" cy="16" rx="10" ry="2.5" class="hall-frame-fill" />
                   </svg>
                 </div>
                 <div class="corridor-head">

@@ -135,25 +135,24 @@ const visitError = buildError ? null : error;
           </div>
         </div>
 
-        <div class="street-ground" aria-hidden="true">
-          <div class="street-grass"></div>
-          <div class="street-pavement"></div>
-          <div class="street-road"></div>
-        </div>
-
-        <div class="street-you">
-          <span
-            id="street-you"
-            class="street-avatar"
-            title={street.length ? "drag me onto a house" : "that's you"}
-            data-draggable={street.length ? "true" : undefined}
-          >
-            <span class="street-avatar-circle">
-              <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
+        <div class="street-ground">
+          <div class="street-grass" aria-hidden="true"></div>
+          {/* you, standing on the pavement in front of your houses */}
+          <div class="street-pavement">
+            <span
+              id="street-you"
+              class="street-avatar"
+              title={street.length ? "drag me onto a house" : "that's you"}
+              data-draggable={street.length ? "true" : undefined}
+            >
+              <span class="street-avatar-circle">
+                <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
+              </span>
+              <span class="street-avatar-name">{person.name}</span>
             </span>
-            <span class="street-avatar-name">{person.name}</span>
-          </span>
-          <a class="street-edit" href="/avatar">edit my avatar</a>
+            <a class="street-edit" href="/avatar">edit my avatar</a>
+          </div>
+          <div class="street-road" aria-hidden="true"></div>
         </div>
       </section>
     </main>
@@ -217,7 +216,6 @@ const visitError = buildError ? null : error;
     border-radius: 1.2rem;
     overflow: hidden;
     background: linear-gradient(var(--street-sky-top), var(--street-sky-bottom) 70%);
-    padding-bottom: 6.2rem;
   }
   .street-sky {
     position: absolute;
@@ -261,7 +259,10 @@ const visitError = buildError ? null : error;
     z-index: 1;
     display: flex;
     align-items: flex-end;
-    gap: 1rem;
+    /* centred while it fits; `safe` falls back to start-aligned once it
+       overflows, so the first house is never scrolled out of reach */
+    justify-content: safe center;
+    gap: 1.6rem;
     padding: 4.5rem 1.2rem 0;
     overflow-x: auto;
     overscroll-behavior-x: contain;
@@ -398,14 +399,11 @@ const visitError = buildError ? null : error;
     cursor: pointer;
   }
 
-  /* --- the ground: a grass verge, the pavement you stand on, the road */
+  /* --- the ground: a grass verge, the pavement you stand on, the road.
+     In normal flow under the row (not overlaid), so nothing standing on
+     the pavement can ever cover a house's sign. */
   .street-ground {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 6.2rem;
-    pointer-events: none;
+    position: relative;
   }
   .street-grass {
     height: 1.4rem;
@@ -413,7 +411,11 @@ const visitError = buildError ? null : error;
     border-top: 3px solid var(--street-grass-dark);
   }
   .street-pavement {
-    height: 2.8rem;
+    display: flex;
+    align-items: flex-end;
+    gap: 0.6rem;
+    min-height: 4.2rem;
+    padding: 0.4rem 1.2rem 0.45rem;
     background:
       repeating-linear-gradient(90deg, transparent 0 58px, var(--street-pavement-line) 58px 60px),
       var(--street-pavement);
@@ -430,15 +432,6 @@ const visitError = buildError ? null : error;
   }
 
   /* you, standing on the pavement */
-  .street-you {
-    position: absolute;
-    z-index: 3;
-    left: 1.2rem;
-    bottom: 2.15rem;
-    display: flex;
-    align-items: flex-end;
-    gap: 0.6rem;
-  }
   .street-avatar {
     display: flex;
     flex-direction: column;
@@ -495,20 +488,43 @@ const visitError = buildError ? null : error;
     opacity: 0.85;
   }
 
-  @media (max-width: 520px) {
+  /* Phone: one street can't hold them all side by side, and a person with
+     no houses yet mustn't have to discover a sideways scroll to find
+     "build". So the street wraps into a little two-column neighbourhood,
+     everything on screen at once, above the shared verge and pavement. */
+  @media (max-width: 640px) {
     .street-row {
-      gap: 0.6rem;
-      padding: 4rem 0.8rem 0;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      justify-items: stretch;
+      align-items: end;
+      gap: 1.4rem 0.6rem;
+      overflow-x: visible;
+      margin-bottom: 0;
+      padding-bottom: 0.9rem;
     }
     .lot {
-      flex-basis: 9.5rem;
+      flex: none;
+      width: 100%;
+    }
+    .house-lot {
+      padding: 0.3rem 0.3rem 0;
+    }
+    .lot-sign,
+    .lot-form {
+      margin-top: 0.2rem;
+    }
+  }
+  @media (max-width: 520px) {
+    .street-row {
+      padding: 4rem 0.7rem 0.9rem;
     }
     .house-lot :global(.lot-house) {
-      width: 8rem;
+      width: min(8rem, 100%);
     }
     .plot-art,
     .sign-art {
-      width: 6.5rem;
+      width: min(6rem, 80%);
     }
     .cloud-b {
       display: none;

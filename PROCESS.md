@@ -617,3 +617,134 @@ script then did the real path in fresh contexts at 1920x1080 and 390x844, in
 light and dark: root to signup, a mismatched-password error shown inline,
 sign up, post, log out, a second context getting the wrong-password error
 and then logging in and seeing the same post.
+
+## Houses: many boards, one account
+
+The board was one shared space: one feed, one plant, one wall, one party
+room. Now there are **houses**, and each is an independent copy of all of
+those. Accounts and avatars stay global --- you are the same person in every
+house you belong to --- and so does the private activity level, which is a
+property of you rather than of any one wall (so is the pixel cooldown it
+sets: opening a second house doesn't double anyone's painting speed). A
+person can belong to as many houses as they like.
+
+**The model:** a `houses` table (`slug`, `name`, `invite_code`) and a
+`house_members` table keyed on (house, person). Every piece of shared state
+gained a `house_id`: `posts` (and through them their photos and scores),
+`waterings`, `pixels` (whose key is now house, x, y), `party_guests` (house,
+person), and the two single-row name tables, `plant` and `canvas_meta`, which
+became one-row-per-house with a unique `house_id`. The slug is the URL
+(`/h/<slug>`) *and* the name you type to visit: it's the name lower-cased
+with punctuation squashed to dashes, so "The Board" and "the board!" can't
+both exist, and typing either one finds it. The invite code is a separate
+72-bit random token, so a link can be shared without anyone spelling a name.
+Anyone logged in can build a house; you get into one by its link
+(`/join/<code>`) or its name (the street page's signpost). People's last-used
+house is a column on `people`, and `/` sends a returning person straight
+there --- or to the street page, if they don't have one yet.
+
+**The migration was the risky part,** because it runs on the production
+volume and the one rule I won't bend is that nobody's posts or photos go
+missing. SQLite can't change a primary key, and can't `ADD` a `NOT NULL
+REFERENCES` column to a table that has rows, so drizzle-kit's generated SQL
+would simply have failed on any real database. `drizzle/0006_houses.sql` is
+hand-written instead: it creates the first house ("the board", slug
+`the-board`, an invite code made by `randomblob()` *at migration time*, so no
+working code is ever committed to this public repo), makes every account with
+a password a member of it, then rebuilds each affected table the way SQLite's
+docs say to --- create `__new_x`, copy every row across with `house_id = 1`,
+drop the old one, rename. Legacy no-password rows get no membership (they
+can't log in), but their posts still render, because a post belongs to its
+house, not to its author. One trap found while writing it: Drizzle's migrator
+wraps each migration in `BEGIN`/`COMMIT`, and SQLite silently ignores `PRAGMA
+foreign_keys` inside a transaction --- and better-sqlite3 turns foreign keys
+*on* by default, so `DROP TABLE posts` would trip `post_images`' reference to
+it. So `src/lib/db.ts` now switches foreign keys off around `migrate()`, runs
+`PRAGMA foreign_key_check`, and switches them back on. A dangling reference
+is logged loudly rather than thrown, on purpose: a throw at boot would put
+the one machine into a restart loop over what might be a single stale row.
+
+**How the migration was tested on real data:** I built and ran the
+pre-houses `main` on a scratch database and seeded it through its own HTTP
+API --- three accounts, three posts with three photos between them, two
+votes, waterings, a renamed plant and wall, two painted pixels, two people in
+the party room --- plus a legacy no-password person with a post and a
+watering inserted directly, like production has. Then I started this build
+on a copy of that database, so the migration ran on the real boot path.
+Every table had identical row counts before and after, `foreign_key_check`
+was clean, all three accounts still logged in and were sent to
+`/h/the-board`, and the page showed all four posts (including the legacy
+one), all three photos, both pixels in their colours, both custom names, the
+two party guests, the old votes and the old waterings.
+
+**Access control, this time per house.** Crit 10's decision was "anyone can
+read any post, only its author can delete it". That's still true, but
+"anyone" now means *anyone in this house*, and it's checked on the server
+every time. `houseAccess()` in `src/lib/houses.ts` is the one gate every
+house API route goes through: who's asking (401 if nobody), which house they
+named (400 if none), whether it exists (404), whether they're a member
+(403) --- and only then does the route touch anything. The house page does
+the same check before running a single query, and a non-member gets a 403
+"door" page with nothing from inside on it. The house is always *named in
+the request* --- `?house=<slug>` in the URL, so bodyless POSTs stay bodyless
+and inside Astro's unconditional same-origin check --- rather than inferred
+from "the last house you opened". I chose that because inferring it would
+make the server's idea of which house you're in a piece of hidden state that
+another tab can change: a phone left open on one house would quietly start
+posting into whichever house you'd last opened on your laptop. Two less
+obvious holes this closes: scoring or deleting a post checks that the post is
+*in* the house you named, so being a member of one house doesn't reach into
+another by naming your own (that's a 404); and `/uploads/*` now only serves a
+photo to a member of the house its post is in, so a copied image URL doesn't
+carry a house's photos outside it. `/api/events` checks membership before
+the stream opens, so nobody can watch a house's corridor or plant by holding
+a connection. Joining by name is the one deliberately open door: a name is
+something you're told, like a link, and for a closed group of friends I'd
+rather "type the name your friend said" just work than add a knock-and-wait
+approval step nobody will be around to answer. Joining is a POST, never a GET
+(an invite link shows a "come in" button rather than joining on load), for
+the same reason logout is: a link preview or an `<img>` mustn't be able to
+change what you belong to. `spec/houses.test.ts` checks all of it as an
+outsider: a 403 from every page and mutating route, and nothing they tried
+landing.
+
+**Live updates, per house.** `src/lib/events.ts` keeps one emitter channel
+and one presence map *per house*. A broadcast into house 3 only reaches
+streams subscribed to house 3, and someone with two houses open in two tabs
+stands in both corridors (and leaves each one independently). The spec opens
+a stream in one house while someone else waters, paints, renames and parties
+in another, and checks none of it arrives.
+
+**The corridor, the party room and the street.** Inside a house your avatar
+stands in a **corridor** --- a sage-green hallway that replaces the old
+"who's online" strip, showing everyone with the house open right now. From
+there you drag yourself into the **party room** (unchanged in spirit: still
+"free to hang out for a couple of hours", still live), or onto the open front
+door at the corridor's end, the **street**, which takes you out to `/houses`.
+The street is a door, not a place: nobody sees you there, and leaving closes
+your connection, which is what takes you out of the corridor for everyone
+else. Your party-room slot deliberately survives the walk out, because it
+means "free for a couple of hours", not "has this tab open". `/houses` is
+drawn as an actual street --- your houses in a row (windows lit when someone's
+home), an empty fenced plot to build a new one, a signpost to visit one by
+name, and you standing on the pavement, draggable onto any of them. On a
+phone the row wraps into a two-by-two neighbourhood instead of scrolling
+sideways, so someone with no houses yet never has to discover a hidden
+scroll to find "build". All three drop targets --- party room, street door,
+each house on the street --- share one drag implementation (`src/scripts/
+drag.ts`), generalised from the party room's: listeners on `document`,
+filtered by pointer id, torn down in a `finally`, so the "avatar stuck in the
+air" bug fixed earlier can't come back through a second, separately-written
+drag. One small new rule rode along: a press that barely moves is a tap, not
+a drop, so tapping your own avatar in the party room no longer counts as
+"dragged it outside the room" and leaves.
+
+**Verified:** `pnpm typecheck` clean; the migration check above; the spec,
+updated for houses plus the new contract file, green twice in a row against
+a fresh build; and a throwaway Playwright script, at 1920x1080 and 390x844 in
+light and dark: sign up and land on an empty street, build a house, copy its
+invite link, a second browser follows the link through signup and back to
+"come in", both see each other in the corridor, one drags into the party room
+and the other sees it live, one drags onto the street door and lands on the
+street page, a second house appears on the street, dragging your avatar onto
+a house goes into it, and a third person gets the 403 door.
