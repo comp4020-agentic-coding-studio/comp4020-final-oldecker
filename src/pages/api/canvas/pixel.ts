@@ -1,7 +1,8 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { APIRoute } from "astro";
+import { activityLevel } from "../../../lib/activity";
 import { logAction } from "../../../lib/audit";
-import { cooldownRemaining, isValidColorIndex, isValidCoord, PLACE_COOLDOWN_SECONDS } from "../../../lib/canvas";
+import { cooldownRemaining, isValidColorIndex, isValidCoord } from "../../../lib/canvas";
 import { db } from "../../../lib/db";
 import { broadcast } from "../../../lib/events";
 import { currentPerson } from "../../../lib/identity";
@@ -35,9 +36,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     .limit(1)
     .get();
 
-  const remaining = cooldownRemaining(last?.createdAt ?? null);
+  const { level, cooldownSeconds } = activityLevel(person.id);
+  const remaining = cooldownRemaining(last?.createdAt ?? null, cooldownSeconds);
   if (remaining > 0)
-    return new Response(JSON.stringify({ remaining }), {
+    return new Response(JSON.stringify({ remaining, cooldownSeconds, level }), {
       status: 429,
       headers: { "content-type": "application/json" },
     });
@@ -53,7 +55,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   logAction(person, "pixel_place", `x=${x} y=${y} color=${color}`);
   broadcast({ type: "pixel", data: { x, y, colorIndex: color } });
 
-  return new Response(JSON.stringify({ x, y, colorIndex: color, cooldownSeconds: PLACE_COOLDOWN_SECONDS }), {
-    headers: { "content-type": "application/json" },
-  });
+  // Placing is itself (lightly) activity, so re-derive for the response.
+  const after = activityLevel(person.id);
+  return new Response(
+    JSON.stringify({ x, y, colorIndex: color, cooldownSeconds: after.cooldownSeconds, level: after.level }),
+    { headers: { "content-type": "application/json" } },
+  );
 };

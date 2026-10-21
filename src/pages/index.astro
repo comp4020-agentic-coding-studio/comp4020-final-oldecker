@@ -1,5 +1,6 @@
 ---
 import { and, desc, eq } from "drizzle-orm";
+import { activityLevel } from "../lib/activity";
 import { AVATARS, avatarById } from "../lib/avatars";
 import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../lib/canvas";
 import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../lib/canvas-meta";
@@ -141,7 +142,9 @@ const lastPixelPlace = person
       .limit(1)
       .get()
   : undefined;
-const myCanvasCooldown = cooldownRemaining(lastPixelPlace?.createdAt ?? null);
+// Private: only ever rendered into this viewer's own page.
+const myActivity = person ? activityLevel(person.id) : null;
+const myCanvasCooldown = cooldownRemaining(lastPixelPlace?.createdAt ?? null, myActivity?.cooldownSeconds);
 const canvasDisplayName = person ? canvasName() : null;
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -580,7 +583,8 @@ const CATEGORY_LABEL: Record<string, string> = {
       .canvas-swatch[aria-pressed="true"] {
         border-color: var(--ink);
       }
-      #canvas-cooldown {
+      #canvas-cooldown,
+      #canvas-level {
         margin: 0;
         font-size: 0.8rem;
         opacity: 0.7;
@@ -1274,6 +1278,9 @@ const CATEGORY_LABEL: Record<string, string> = {
                 </div>
                 <p id="canvas-cooldown" data-cooldown={myCanvasCooldown}>
                   {myCanvasCooldown > 0 ? `wait ${myCanvasCooldown}s to place again` : "ready to place"}
+                </p>
+                <p id="canvas-level">
+                  {myActivity && `level ${myActivity.level} · you can place every ${myActivity.cooldownSeconds}s`}
                 </p>
               </div>
             </div>

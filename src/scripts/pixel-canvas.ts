@@ -1,11 +1,12 @@
 // Your own placements on the shared pixel canvas. A pixel someone ELSE
 // places arrives through live.ts instead (same split as the plant: your own
 // action here, everyone else's over SSE).
-import { PALETTE, PLACE_COOLDOWN_SECONDS } from "../lib/canvas";
+import { PALETTE } from "../lib/canvas";
 import { applyCanvasName } from "./canvas-dom";
 
 const svg = document.querySelector<SVGSVGElement>("#pixel-canvas");
 const cooldownLabel = document.querySelector<HTMLElement>("#canvas-cooldown");
+const levelLabel = document.querySelector<HTMLElement>("#canvas-level");
 const swatches = document.querySelectorAll<HTMLButtonElement>(".canvas-swatch");
 
 let selectedColor = 0;
@@ -20,6 +21,10 @@ for (const swatch of swatches) {
     selectedColor = Number(swatch.dataset.colorIndex ?? "0");
     for (const s of swatches) s.setAttribute("aria-pressed", String(s === swatch));
   });
+}
+
+function showLevel(level: number, cooldownSeconds: number): void {
+  if (levelLabel) levelLabel.textContent = `level ${level} · you can place every ${cooldownSeconds}s`;
 }
 
 function startCooldown(seconds: number): void {
@@ -54,15 +59,21 @@ svg?.addEventListener("click", async (event) => {
   });
 
   if (res.status === 429) {
-    const { remaining } = (await res.json()) as { remaining: number };
+    const { remaining, level, cooldownSeconds } = (await res.json()) as {
+      remaining: number;
+      level: number;
+      cooldownSeconds: number;
+    };
+    showLevel(level, cooldownSeconds);
     startCooldown(remaining);
     return;
   }
   if (!res.ok) return;
 
-  const placed = (await res.json()) as { colorIndex: number };
+  const placed = (await res.json()) as { colorIndex: number; cooldownSeconds: number; level: number };
   rect.setAttribute("fill", PALETTE[placed.colorIndex]?.hex ?? "#ffffff");
-  startCooldown(PLACE_COOLDOWN_SECONDS);
+  showLevel(placed.level, placed.cooldownSeconds);
+  startCooldown(placed.cooldownSeconds);
 });
 
 // Renaming the wall --- identical click-to-edit shape as the plant's own
