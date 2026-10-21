@@ -1,0 +1,426 @@
+// The build-your-own face avatar: a flat, Bitmoji-ish head-and-shoulders
+// drawn from layers on a 64x64 viewBox. One central renderer used by the
+// server (index.astro) AND client scripts (live.ts, party-dom.ts, the
+// editor) --- so no node/server imports here, ever.
+//
+// STORAGE. A face is a handful of small integers (an index into each option
+// list below), stored as a compact JSON string in the existing
+// people.avatar text column --- no schema change, no migration:
+//   {"bg":2,"sk":3,"hc":1,"hs":4,"br":2,"ey":0,"mo":1,"bd":0,"gl":0,"ex":0,"of":5}
+// Because only indices are stored, the SVG is built purely from constants in
+// this file: nothing user-controlled is ever interpolated into markup, so
+// there is no injection surface even though renderAvatarSvg() output goes
+// through set:html / innerHTML. parseAvatar() is the one gatekeeper: it
+// rejects anything that isn't exactly this shape (wrong keys, non-integers,
+// out-of-range indices, > MAX_AVATAR_LENGTH chars).
+//
+// LEGACY VALUES. Rows created before this feature hold a creature id like
+// "bunyip". renderAvatarSvg() still draws those with the old creature art
+// from avatars.ts (kept for that purpose only --- nobody can *choose* a
+// creature any more), so old posts and presence look exactly as they did.
+// Anything else unrecognised (corrupt/empty value) renders a neutral default
+// face rather than nothing.
+//
+// EYE STYLING, deliberately. avatars.ts's header documents a past mistake: a
+// white oval "sclera" under a dark pupil on a dark fill reads as blackface
+// caricature. Every eye style here is dark ink marks (dots, ovals, arcs) with
+// at most a tiny highlight --- never a white eye-shape --- and mouths are a
+// plain ink line or dark open shape, never a contrasting ring of lip colour.
+// The same features are drawn identically on every skin tone; skin tone only
+// changes the skin fills (and a slightly deeper shade for neck/ears), so no
+// combination can turn into a caricature.
+import { avatarById } from "./avatars";
+
+export interface FaceConfig {
+  bg: number; // backdrop colour
+  sk: number; // skin
+  hc: number; // hair colour
+  hs: number; // hairstyle
+  br: number; // eyebrows
+  ey: number; // eyes
+  mo: number; // mouth
+  bd: number; // facial hair
+  gl: number; // glasses
+  ex: number; // extras: hats, earrings, etc.
+  of: number; // outfit colour (shirt, and hat/headband colour)
+}
+
+export type FaceKey = keyof FaceConfig;
+export const FACE_KEYS: FaceKey[] = ["bg", "sk", "hc", "hs", "br", "ey", "mo", "bd", "gl", "ex", "of"];
+export const MAX_AVATAR_LENGTH = 200;
+
+// --- option data -----------------------------------------------------------
+
+const BACKDROPS = ["#cfe8f7", "#fbe3b5", "#d7efd0", "#f6cfd8", "#dcd2f2", "#f9d7c1", "#c7ece6", "#e4e6ea"];
+const BACKDROP_NAMES = ["sky", "sand", "mint", "rose", "lavender", "peach", "teal", "grey"];
+
+// base, shade (neck/ears/nose), ink (mouth). A realistic spread, light to deep.
+const SKINS: Array<{ base: string; shade: string; ink: string }> = [
+  { base: "#f9dfcb", shade: "#e9bda2", ink: "#8a3b36" },
+  { base: "#f2cba8", shade: "#dca983", ink: "#82362f" },
+  { base: "#e3b085", shade: "#c98f64", ink: "#7a2f28" },
+  { base: "#cf9566", shade: "#b0774c", ink: "#6e2823" },
+  { base: "#b3794b", shade: "#935f37", ink: "#4d1a14" },
+  { base: "#94603a", shade: "#764a2a", ink: "#3a110d" },
+  { base: "#764628", shade: "#5b351d", ink: "#2a0b08" },
+  { base: "#5c351f", shade: "#452613", ink: "#1f0805" },
+];
+const SKIN_NAMES = ["porcelain", "fair", "light tan", "tan", "caramel", "brown", "deep brown", "espresso"];
+
+// base, dark (eyebrows/stubble/shading). Includes a few playful dyed colours.
+const HAIRS: Array<{ base: string; dark: string }> = [
+  { base: "#1f1a17", dark: "#0f0c0a" },
+  { base: "#43291a", dark: "#2a180e" },
+  { base: "#7a4c2b", dark: "#553219" },
+  { base: "#9b3e22", dark: "#6e2814" },
+  { base: "#c4642c", dark: "#8d4318" },
+  { base: "#dcb25f", dark: "#a67f33" },
+  { base: "#b9bcc4", dark: "#7e828d" },
+  { base: "#e0679c", dark: "#a8416f" },
+  { base: "#3f6fd1", dark: "#274a99" },
+  { base: "#7d52c9", dark: "#553391" },
+];
+const HAIR_COLOUR_NAMES = ["black", "dark brown", "brown", "auburn", "ginger", "blonde", "silver", "pink", "blue", "purple"];
+
+const OUTFITS = ["#2f6f9f", "#c1443b", "#3f7d3f", "#e3b23c", "#7a4bc2", "#2b2b33", "#ece6dc", "#d9619b"];
+const OUTFIT_NAMES = ["blue", "red", "green", "mustard", "purple", "black", "cream", "pink"];
+
+const HAIRSTYLE_NAMES = ["bald", "buzz", "short", "quiff", "long", "curly", "afro", "bun"];
+const BROW_NAMES = ["none", "straight", "arched", "thick", "raised"];
+const EYE_NAMES = ["dots", "big", "happy", "sleepy", "wink", "tall"];
+const MOUTH_NAMES = ["smile", "grin", "neutral", "open", "smirk", "tongue", "sad"];
+const BEARD_NAMES = ["clean", "stubble", "moustache", "beard"];
+const GLASSES_NAMES = ["none", "round", "square", "shades", "tinted"];
+const EXTRA_NAMES = ["none", "beanie", "cap", "headband", "earrings", "flower", "headphones", "party hat"];
+
+const INK = "#1c1410"; // eyes/brows ink, same on every skin (see header comment)
+
+export interface FaceGroup {
+  key: FaceKey;
+  label: string;
+  kind: "swatch" | "style";
+  names: string[]; // one per option, for tooltips/aria
+  colors?: string[]; // swatch groups only
+  view?: string; // style groups: viewBox zoomed on the relevant feature
+}
+
+// Drives the editor UI (order = display order), so adding an option here
+// shows up there with no extra wiring.
+export const FACE_GROUPS: FaceGroup[] = [
+  { key: "sk", label: "skin", kind: "swatch", names: SKIN_NAMES, colors: SKINS.map((s) => s.base) },
+  { key: "hs", label: "hairstyle", kind: "style", names: HAIRSTYLE_NAMES, view: "0 0 64 64" },
+  { key: "hc", label: "hair colour", kind: "swatch", names: HAIR_COLOUR_NAMES, colors: HAIRS.map((h) => h.base) },
+  { key: "ey", label: "eyes", kind: "style", names: EYE_NAMES, view: "12 18 40 26" },
+  { key: "br", label: "eyebrows", kind: "style", names: BROW_NAMES, view: "12 18 40 26" },
+  { key: "mo", label: "mouth", kind: "style", names: MOUTH_NAMES, view: "14 28 36 26" },
+  { key: "bd", label: "facial hair", kind: "style", names: BEARD_NAMES, view: "10 22 44 34" },
+  { key: "gl", label: "glasses", kind: "style", names: GLASSES_NAMES, view: "12 18 40 26" },
+  { key: "ex", label: "extras", kind: "style", names: EXTRA_NAMES, view: "0 0 64 64" },
+  { key: "of", label: "outfit", kind: "swatch", names: OUTFIT_NAMES, colors: OUTFITS },
+  { key: "bg", label: "backdrop", kind: "swatch", names: BACKDROP_NAMES, colors: BACKDROPS },
+];
+
+const COUNTS: Record<FaceKey, number> = {
+  bg: BACKDROPS.length,
+  sk: SKINS.length,
+  hc: HAIRS.length,
+  hs: HAIRSTYLE_NAMES.length,
+  br: BROW_NAMES.length,
+  ey: EYE_NAMES.length,
+  mo: MOUTH_NAMES.length,
+  bd: BEARD_NAMES.length,
+  gl: GLASSES_NAMES.length,
+  ex: EXTRA_NAMES.length,
+  of: OUTFITS.length,
+};
+
+export const DEFAULT_FACE: FaceConfig = { bg: 0, sk: 2, hc: 1, hs: 2, br: 1, ey: 0, mo: 0, bd: 0, gl: 0, ex: 0, of: 0 };
+
+// --- validation / (de)serialising -------------------------------------------
+
+// Strict on purpose: the exact key set, every value an in-range integer, a
+// hard length cap. Returns the normalised config, or null for anything else
+// (including legacy creature ids --- those go through isLegacyAvatarId).
+export function parseAvatar(value: unknown): FaceConfig | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > MAX_AVATAR_LENGTH) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if (Object.keys(obj).length !== FACE_KEYS.length) return null;
+  const out = {} as FaceConfig;
+  for (const key of FACE_KEYS) {
+    const n = obj[key];
+    if (typeof n !== "number" || !Number.isInteger(n) || n < 0 || n >= COUNTS[key]) return null;
+    out[key] = n;
+  }
+  return out;
+}
+
+// Canonical form (fixed key order), so equal faces store as equal strings.
+export function serializeFace(face: FaceConfig): string {
+  const out: Record<string, number> = {};
+  for (const key of FACE_KEYS) out[key] = face[key];
+  return JSON.stringify(out);
+}
+
+export function randomFace(rng: () => number = Math.random): FaceConfig {
+  const pick = (n: number) => Math.floor(rng() * n);
+  const face = {} as FaceConfig;
+  for (const key of FACE_KEYS) face[key] = pick(COUNTS[key]);
+  // keep random faces mostly "natural": dyed hair, hats and party hats stay
+  // possible but rarer, and a hat doesn't need a hairstyle fight.
+  if (face.hc >= 7 && rng() < 0.6) face.hc = pick(7);
+  if (face.ex !== 4 && rng() < 0.45) face.ex = 0;
+  if (face.gl > 0 && rng() < 0.4) face.gl = 0;
+  if (face.bd > 0 && rng() < 0.5) face.bd = 0;
+  return face;
+}
+
+// --- renderer ---------------------------------------------------------------
+
+function shade(hex: string, factor: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (shift: number) => Math.round(((n >> shift) & 255) * factor);
+  return `#${[16, 8, 0].map((s) => ch(s).toString(16).padStart(2, "0")).join("")}`;
+}
+
+// Head: ellipse centred (32,31), rx 15, ry 17 (top y=14, chin y=48).
+// Eyes sit at y~31 (x 25.5 / 38.5), brows ~26, mouth ~42.
+function hairBack(style: number, c: string): string {
+  switch (style) {
+    case 4: // long
+      return `<path d="M14.5 34 C11 6 53 6 49.5 34 L53 60 Q32 66 11 60 Z" fill="${c}"/>`;
+    case 5: // curly
+      return [
+        [19, 24, 6.5], [25, 17, 6.5], [32, 14.5, 6.5], [39, 17, 6.5], [45, 24, 6.5],
+        [16, 33, 5], [48, 33, 5], [15, 41, 4], [49, 41, 4],
+      ]
+        .map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`)
+        .join("");
+    case 6: // afro
+      return `<circle cx="32" cy="26" r="21.5" fill="${c}"/>`;
+    case 7: // bun
+      return `<circle cx="32" cy="9.5" r="6.5" fill="${c}"/>`;
+    default:
+      return "";
+  }
+}
+
+function hairFront(style: number, c: string): string {
+  switch (style) {
+    case 1: // buzz
+      return `<path d="M17 30 C15.5 12 48.5 12 47 30 C45.5 23 40 19.5 32 19.5 C24 19.5 18.5 23 17 30Z" fill="${c}"/>`;
+    case 2: // short, side-swept fringe
+      return `<path d="M16.5 32 C13.5 9 50.5 9 47.5 32 C46.5 27 44.5 24 41 22.5 C36 25 28.5 24.5 22 21 C19.5 24 17.5 28 16.5 32Z" fill="${c}"/>`;
+    case 3: // quiff
+      return `<path d="M16.5 31 C12 8 39 0 48.5 13 C50 19 48.5 25 47.5 31 C46 25 44 22 40 20.5 C34 22.5 26 22.5 22 19 C19 22 17.5 26 16.5 31Z" fill="${c}"/>`;
+    case 4: // long: centre part
+      return `<path d="M15.5 34 C12.5 8 51.5 8 48.5 34 C46.5 26 40.5 20 32 17.5 C23.5 20 17.5 26 15.5 34Z" fill="${c}"/>`;
+    case 5: // curly fringe
+      return [[24, 21.5, 5], [32, 19.5, 5.5], [40, 21.5, 5]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`).join("");
+    case 6: // afro hairline
+      return `<path d="M16.5 29 C16.5 17 47.5 17 47.5 29 C45 23.5 40 21 32 21 C24 21 19 23.5 16.5 29Z" fill="${c}"/>`;
+    case 7: // bun: centre-parted cap
+      return `<path d="M16.5 32 C14.5 11 49.5 11 47.5 32 C46 25 40.5 20.5 32 18.5 C23.5 20.5 18 25 16.5 32Z" fill="${c}"/>`;
+    default:
+      return "";
+  }
+}
+
+function eyes(style: number): string {
+  const L = 25.5;
+  const R = 38.5;
+  const dot = (x: number, r: number, hl = true) =>
+    `<circle cx="${x}" cy="31" r="${r}" fill="${INK}"/>` +
+    (hl ? `<circle cx="${x - r * 0.35}" cy="${31 - r * 0.38}" r="${Math.max(0.7, r * 0.3)}" fill="#fff"/>` : "");
+  const arcUp = (x: number) => `<path d="M${x - 3.2} 32.2 Q${x} 27.6 ${x + 3.2} 32.2" stroke="${INK}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+  const arcDown = (x: number) => `<path d="M${x - 3.2} 30.6 Q${x} 33.8 ${x + 3.2} 30.6" stroke="${INK}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+  switch (style) {
+    case 1:
+      return dot(L, 3.3) + dot(R, 3.3);
+    case 2:
+      return arcUp(L) + arcUp(R);
+    case 3:
+      return arcDown(L) + arcDown(R);
+    case 4:
+      return dot(L, 2.7) + arcUp(R);
+    case 5: {
+      const tall = (x: number) =>
+        `<ellipse cx="${x}" cy="31" rx="2.3" ry="3.4" fill="${INK}"/><circle cx="${x - 0.8}" cy="29.6" r="0.9" fill="#fff"/>`;
+      return tall(L) + tall(R);
+    }
+    default:
+      return dot(L, 2.8) + dot(R, 2.8);
+  }
+}
+
+function brows(style: number, c: string): string {
+  const line = (d: string, w: number) => `<path d="${d}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+  switch (style) {
+    case 1:
+      return line("M22 26.8 L29 25.8", 2) + line("M35 25.8 L42 26.8", 2);
+    case 2:
+      return line("M22 27 Q25.5 23.4 29 26", 2) + line("M35 26 Q38.5 23.4 42 27", 2);
+    case 3:
+      return line("M22 26.6 L29 25.6", 3.4) + line("M35 25.6 L42 26.6", 3.4);
+    case 4:
+      return line("M22.5 25 Q25.5 21.4 28.5 24", 2) + line("M35.5 24 Q38.5 21.4 41.5 25", 2);
+    default:
+      return "";
+  }
+}
+
+function mouth(style: number, ink: string): string {
+  const stroke = (d: string) => `<path d="${d}" stroke="${ink}" stroke-width="2.3" fill="none" stroke-linecap="round"/>`;
+  switch (style) {
+    case 1: // grin
+      return `<path d="M26.5 40.5 Q32 41.8 37.5 40.5 Q36.5 47.5 32 47.5 Q27.5 47.5 26.5 40.5Z" fill="#3a0f10"/><path d="M27.6 41.2 Q32 42.2 36.4 41.2 L36 43.4 Q32 44.2 28 43.4Z" fill="#fff"/>`;
+    case 2:
+      return stroke("M28 43.5 L36 43.5");
+    case 3: // open "o"
+      return `<ellipse cx="32" cy="43.5" rx="3" ry="3.6" fill="#3a0f10"/><ellipse cx="32" cy="45" rx="1.8" ry="1.3" fill="#d9605f"/>`;
+    case 4: // smirk
+      return stroke("M28 43.8 Q33 45.4 37 41");
+    case 5: // tongue out
+      return `<path d="M32 44.5 v3.2 a2.6 2.6 0 0 0 5.2 0 v-4.2Z" fill="#e0707a" transform="translate(-2.6 0)"/>` + stroke("M27 41.5 Q32 46.2 37 41.5");
+    case 6: // sad
+      return stroke("M28 45 Q32 41.6 36 45");
+    default: // smile
+      return stroke("M27 41.4 Q32 46.4 37 41.4");
+  }
+}
+
+// Beard drawn between face and mouth so the mouth reads on top; "full" gets
+// a skin-coloured patch around the mouth so it isn't lost in the hair.
+function beard(style: number, hair: string, skin: string): string {
+  const jaw = "M17.4 35 A15 17 0 0 0 46.6 35";
+  switch (style) {
+    case 1: // stubble
+      return `<path d="${jaw} Q32 39 17.4 35Z" fill="${hair}" opacity="0.28"/>`;
+    case 2: // moustache
+      return `<path d="M25.5 40.6 Q28.5 37.6 32 39.4 Q35.5 37.6 38.5 40.6 Q35 41.2 32 40.6 Q29 41.2 25.5 40.6Z" fill="${hair}"/>`;
+    case 3: // full beard
+      return (
+        `<path d="${jaw} C44 41 40 38.2 32 38.2 C24 38.2 20 41 17.4 35Z" fill="${hair}"/>` +
+        `<ellipse cx="32" cy="43" rx="6.4" ry="3.9" fill="${skin}"/>`
+      );
+    default:
+      return "";
+  }
+}
+
+function glasses(style: number, outfit: string): string {
+  if (style === 0) return "";
+  const frame = "#26211e";
+  const L = 25.5;
+  const R = 38.5;
+  const lens = (x: number, shape: "round" | "square", fill: string, op: number) =>
+    shape === "round"
+      ? `<circle cx="${x}" cy="31.4" r="5.2" fill="${fill}" fill-opacity="${op}" stroke="${frame}" stroke-width="1.7"/>`
+      : `<rect x="${x - 5.4}" y="26.6" width="10.8" height="9.2" rx="2.4" fill="${fill}" fill-opacity="${op}" stroke="${frame}" stroke-width="1.7"/>`;
+  const bridge = `<path d="M30.7 31 Q32 29.8 33.3 31" stroke="${frame}" stroke-width="1.5" fill="none"/>`;
+  const arms = `<path d="M20.2 31 L17.2 30.2 M43.8 31 L46.8 30.2" stroke="${frame}" stroke-width="1.5" stroke-linecap="round"/>`;
+  switch (style) {
+    case 2:
+      return arms + bridge + lens(L, "square", "#fff", 0.12) + lens(R, "square", "#fff", 0.12);
+    case 3: // shades: dark, opaque
+      return arms + bridge + lens(L, "square", "#15110f", 0.92) + lens(R, "square", "#15110f", 0.92);
+    case 4: // tinted round, in the outfit colour
+      return arms + bridge + lens(L, "round", outfit, 0.55) + lens(R, "round", outfit, 0.55);
+    default:
+      return arms + bridge + lens(L, "round", "#fff", 0.12) + lens(R, "round", "#fff", 0.12);
+  }
+}
+
+function extras(style: number, outfit: string): string {
+  const dark = shade(outfit, 0.78);
+  switch (style) {
+    case 1: // beanie
+      return (
+        `<path d="M15.5 26 C14 4 50 4 48.5 26Z" fill="${outfit}"/>` +
+        `<rect x="14.5" y="22" width="35" height="7" rx="3.2" fill="${dark}"/>` +
+        `<circle cx="32" cy="8.6" r="3.4" fill="${dark}"/>`
+      );
+    case 2: // cap
+      return (
+        `<path d="M16 25 C14.5 5 49.5 5 48 25Z" fill="${outfit}"/>` +
+        `<path d="M13.5 25.2 Q32 20.5 50.5 25.2 Q51 29.4 32 28.2 Q13 29.4 13.5 25.2Z" fill="${dark}"/>`
+      );
+    case 3: // headband
+      return `<path d="M16.2 23 Q32 16.6 47.8 23 L47.4 27.4 Q32 21 16.6 27.4Z" fill="${outfit}"/>`;
+    case 4: // gold earrings
+      return `<circle cx="16.4" cy="38" r="2.3" fill="none" stroke="#e3b23c" stroke-width="1.6"/><circle cx="47.6" cy="38" r="2.3" fill="none" stroke="#e3b23c" stroke-width="1.6"/>`;
+    case 5: // flower tucked above the ear
+      return (
+        [[0, -3.2], [3.1, -1], [1.9, 2.6], [-1.9, 2.6], [-3.1, -1]]
+          .map(([dx, dy]) => `<circle cx="${45 + dx}" cy="${19 + dy}" r="2.6" fill="#f08cb4"/>`)
+          .join("") + `<circle cx="45" cy="19" r="1.8" fill="#f7c948"/>`
+      );
+    case 6: // headphones
+      return (
+        `<path d="M15.6 33 C14 5 50 5 48.4 33" stroke="${outfit}" stroke-width="3" fill="none" stroke-linecap="round"/>` +
+        `<rect x="11.4" y="28.5" width="6" height="11" rx="2.8" fill="${dark}"/><rect x="46.6" y="28.5" width="6" height="11" rx="2.8" fill="${dark}"/>`
+      );
+    case 7: // party hat
+      return (
+        `<path d="M23.5 19 L33 0.5 L41.5 19 Q32.5 21.4 23.5 19Z" fill="${outfit}"/>` +
+        `<path d="M27 12.6 L38 14.2 M25 16.6 L40.2 17.6" stroke="#fff" stroke-width="1.7" stroke-linecap="round" opacity="0.75"/>` +
+        `<circle cx="33" cy="1.6" r="2.6" fill="#f7c948"/>`
+      );
+    default:
+      return "";
+  }
+}
+
+export function renderFaceSvg(face: FaceConfig): string {
+  const skin = SKINS[face.sk];
+  const hair = HAIRS[face.hc];
+  const outfit = OUTFITS[face.of];
+  // A beanie/cap covers the front hair; the party hat perches on top of it,
+  // and headphones/headband/flower don't cover it at all.
+  const hatCovers = face.ex === 1 || face.ex === 2;
+  const volume = face.hs === 5 || face.hs === 6;
+  // an afro/curly cloud under a snug hat just sticks out like a halo
+  const backHair = hatCovers && volume ? "" : hairBack(face.hs, hair.base);
+
+  return [
+    `<rect width="64" height="64" fill="${BACKDROPS[face.bg]}"/>`,
+    backHair,
+    // neck + shoulders
+    `<path d="M27 40 h10 v10 q-5 4.4 -10 0Z" fill="${skin.shade}"/>`,
+    `<path d="M5 66 C5 55 15 50.4 25 49.4 Q32 53.4 39 49.4 C49 50.4 59 55 59 66Z" fill="${outfit}"/>`,
+    `<path d="M25 49.4 Q32 53.4 39 49.4 Q32 58 25 49.4Z" fill="${skin.shade}"/>`,
+    // ears, then head
+    `<circle cx="17" cy="33.5" r="3.4" fill="${skin.shade}"/><circle cx="47" cy="33.5" r="3.4" fill="${skin.shade}"/>`,
+    `<ellipse cx="32" cy="31" rx="15" ry="17" fill="${skin.base}"/>`,
+    `<circle cx="21.5" cy="38" r="2.8" fill="#e8746a" opacity="0.2"/><circle cx="42.5" cy="38" r="2.8" fill="#e8746a" opacity="0.2"/>`,
+    `<path d="M31 34.6 Q32.2 37 34.2 36.4" stroke="${skin.shade}" stroke-width="1.5" fill="none" stroke-linecap="round"/>`,
+    beard(face.bd, hair.base, skin.base),
+    mouth(face.mo, skin.ink),
+    hatCovers ? "" : hairFront(face.hs, hair.base),
+    eyes(face.ey),
+    brows(face.br, hair.dark),
+    glasses(face.gl, outfit),
+    extras(face.ex, outfit),
+  ].join("");
+}
+
+// --- the public entry point --------------------------------------------------
+
+export function isLegacyAvatarId(value: string): boolean {
+  return avatarById(value) !== undefined;
+}
+
+// Inner markup for <svg viewBox="0 0 64 64">. Always returns something drawable.
+export function renderAvatarSvg(avatarValue: string): string {
+  const face = parseAvatar(avatarValue);
+  if (face) return renderFaceSvg(face);
+  const legacy = avatarById(avatarValue);
+  if (legacy) return legacy.svg;
+  return renderFaceSvg(DEFAULT_FACE);
+}

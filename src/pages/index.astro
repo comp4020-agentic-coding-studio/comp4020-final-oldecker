@@ -1,7 +1,8 @@
 ---
 import { and, desc, eq } from "drizzle-orm";
 import { activityLevel } from "../lib/activity";
-import { AVATARS, avatarById } from "../lib/avatars";
+import AvatarEditor from "../components/AvatarEditor.astro";
+import { randomFace, renderAvatarSvg, serializeFace } from "../lib/face";
 import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../lib/canvas";
 import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../lib/canvas-meta";
 import { db } from "../lib/db";
@@ -1264,32 +1265,15 @@ const CATEGORY_LABEL: Record<string, string> = {
         margin: 3rem auto;
         text-align: center;
       }
-      .avatars {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 0.6rem;
-        justify-items: center;
+      .join:has([data-avatar-editor]) {
+        max-width: 420px;
       }
-      .avatars label {
-        width: 3.4rem;
-        height: 3.4rem;
-        border-radius: 50%;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--bg);
-        border: 2px solid transparent;
-      }
-      .avatars label svg {
-        width: 2.6rem;
-        height: 2.6rem;
-      }
-      .avatars input {
-        display: none;
-      }
-      .avatars input:checked + label {
-        border-color: var(--ink);
+      .edit-avatar-link {
+        display: inline-block;
+        font-size: 0.75rem;
+        opacity: 0.6;
+        margin: -0.6rem 0 0.8rem;
+        color: inherit;
       }
 
       /* --- who's here -------------------------------------------------- */
@@ -1359,16 +1343,7 @@ const CATEGORY_LABEL: Record<string, string> = {
           <form class="join" method="post" action="/api/join">
             <h1>pick a name and a mate</h1>
             <input name="name" placeholder="your name" maxlength="40" required autofocus />
-            <div class="avatars">
-              {AVATARS.map((a, i) => (
-                <>
-                  <input type="radio" name="avatar" id={`a${i}`} value={a.id} checked={i === 0} />
-                  <label for={`a${i}`} title={a.name}>
-                    <svg viewBox="0 0 64 64" aria-hidden="true" set:html={a.svg} />
-                  </label>
-                </>
-              ))}
-            </div>
+            <AvatarEditor value={serializeFace(randomFace())} />
             <button type="submit">join the board</button>
           </form>
         ) : (
@@ -1377,19 +1352,17 @@ const CATEGORY_LABEL: Record<string, string> = {
               {initialPresence.length === 0 ? (
                 <span class="presence-empty">no one else here right now</span>
               ) : (
-                initialPresence.map((p) => {
-                  const a = avatarById(p.avatar);
-                  return (
-                    <span class="presence-guest" title={p.name}>
-                      <span class="presence-avatar">
-                        <svg viewBox="0 0 64 64" aria-hidden="true" set:html={a?.svg ?? ""} />
-                      </span>
-                      <span class="presence-name">{p.name}</span>
+                initialPresence.map((p) => (
+                  <span class="presence-guest" title={p.name}>
+                    <span class="presence-avatar">
+                      <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(p.avatar)} />
                     </span>
-                  );
-                })
+                    <span class="presence-name">{p.name}</span>
+                  </span>
+                ))
               )}
             </div>
+            <a class="edit-avatar-link" href="/avatar">edit my avatar</a>
 
             <div class="party-widget">
               <h2>🎉 the party room</h2>
@@ -1405,7 +1378,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                   hidden={inPartyRoom}
                 >
                   <span class="party-avatar-circle">
-                    <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(person.avatar)?.svg ?? ""} />
+                    <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
                   </span>
                   <span class="party-guest-name">you</span>
                 </span>
@@ -1473,7 +1446,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                         title={g.name}
                       >
                         <span class="party-avatar-circle">
-                          <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(g.avatar)?.svg ?? ""} />
+                          <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(g.avatar)} />
                         </span>
                         <span class="party-guest-name">{g.name}</span>
                       </span>
@@ -1611,7 +1584,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                 <div class="post-main">
                   <header>
                     <span class="avatar">
-                      <svg viewBox="0 0 64 64" aria-hidden="true" set:html={avatarById(post.authorAvatar)?.svg ?? ""} />
+                      <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(post.authorAvatar)} />
                     </span>
                     <strong>{post.authorName}</strong>
                     <span class={`category-tag category-${post.category}`}>

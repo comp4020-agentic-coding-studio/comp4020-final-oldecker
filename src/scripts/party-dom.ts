@@ -10,7 +10,7 @@
 // independent callers (this file's own drag handler, and live.ts) each
 // keeping their own copy of "the current guest list" would drift the
 // moment one updated without the other knowing.
-import { avatarById } from "../lib/avatars";
+import { renderAvatarSvg } from "../lib/face";
 
 export interface PartyGuest {
   personId: string;
@@ -24,7 +24,6 @@ const emptyLabel = document.querySelector<HTMLElement>("#party-room-empty");
 const yourChip = document.querySelector<HTMLElement>("#party-you");
 
 function guestEl(guest: PartyGuest, isOwn: boolean): HTMLElement {
-  const avatar = avatarById(guest.avatar);
   const el = document.createElement("span");
   el.className = "party-guest party-room-avatar";
   el.dataset.personId = guest.personId;
@@ -33,7 +32,7 @@ function guestEl(guest: PartyGuest, isOwn: boolean): HTMLElement {
   // Matches index.astro's SSR markup exactly: an avatar circle plus a name
   // label underneath, so a person who joins live over SSE looks identical
   // to one rendered on the page's first load.
-  el.innerHTML = `<span class="party-avatar-circle"><svg viewBox="0 0 64 64" aria-hidden="true">${avatar?.svg ?? ""}</svg></span><span class="party-guest-name">${escapeHtml(guest.name)}</span>`;
+  el.innerHTML = `<span class="party-avatar-circle"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(guest.avatar)}</svg></span><span class="party-guest-name">${escapeHtml(guest.name)}</span>`;
   return el;
 }
 

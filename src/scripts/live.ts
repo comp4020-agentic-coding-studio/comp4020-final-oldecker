@@ -4,7 +4,7 @@
 // is). One EventSource per tab; the server side of this is
 // src/pages/api/events.ts.
 import type { PlantStage } from "../lib/plant-art";
-import { avatarById } from "../lib/avatars";
+import { renderAvatarSvg } from "../lib/face";
 import { PALETTE } from "../lib/canvas";
 import { applyCanvasName } from "./canvas-dom";
 import { applyPartyJoin, escapeHtml, applyPartyLeave, renderPartyRoom, type PartyGuest } from "./party-dom";
@@ -39,9 +39,8 @@ function renderPresence(here: PresenceEvent["here"]): void {
   }
   presenceEl.innerHTML = here
     .map((p) => {
-      const avatar = avatarById(p.avatar);
       const safeName = escapeHtml(p.name);
-      return `<span class="presence-guest" title="${safeName}"><span class="presence-avatar"><svg viewBox="0 0 64 64" aria-hidden="true">${avatar?.svg ?? ""}</svg></span><span class="presence-name">${safeName}</span></span>`;
+      return `<span class="presence-guest" title="${safeName}"><span class="presence-avatar"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(p.avatar)}</svg></span><span class="presence-name">${safeName}</span></span>`;
     })
     .join("");
 }

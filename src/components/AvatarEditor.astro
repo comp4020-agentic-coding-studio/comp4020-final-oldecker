@@ -1,0 +1,138 @@
+---
+// Reusable face-builder: live preview, a shuffle button and one picker row
+// per feature, all driving a single hidden <input name="avatar"> holding the
+// compact JSON face config (see src/lib/face.ts). Drop it inside any <form>;
+// the host page supplies the submit button and the theme variables
+// (--bg --ink --card --border --text-muted), and the server validates the
+// field with parseAvatar() (see src/pages/api/avatar.ts and api/join.ts).
+//
+// Server-rendered first (so it works as a first paint and the thumbnails
+// are never empty), then src/scripts/avatar-editor.ts takes over: clicking
+// an option updates the hidden input, the preview and every thumbnail.
+import { DEFAULT_FACE, FACE_GROUPS, parseAvatar, renderFaceSvg, serializeFace } from "../lib/face";
+
+interface Props {
+  value?: string; // current avatar value; anything unparseable (e.g. a legacy creature id) falls back to the default face
+  name?: string; // form field name
+}
+const { value = "", name = "avatar" } = Astro.props;
+const face = parseAvatar(value) ?? DEFAULT_FACE;
+---
+
+<div class="avatar-editor" data-avatar-editor data-face={serializeFace(face)}>
+  <input type="hidden" name={name} value={serializeFace(face)} data-avatar-input />
+  <div class="ae-top">
+    <svg class="ae-preview" viewBox="0 0 64 64" role="img" aria-label="your avatar preview" data-avatar-preview set:html={renderFaceSvg(face)} />
+    <button type="button" class="ae-shuffle" data-avatar-shuffle>shuffle</button>
+  </div>
+  {
+    FACE_GROUPS.map((g) => (
+      <fieldset class="ae-group" data-group={g.key}>
+        <legend>{g.label}</legend>
+        <div class="ae-options">
+          {g.names.map((label, i) => (
+            <button
+              type="button"
+              class:list={["ae-opt", g.kind === "swatch" ? "ae-swatch" : "ae-style"]}
+              data-key={g.key}
+              data-index={i}
+              title={label}
+              aria-label={`${g.label}: ${label}`}
+              aria-pressed={face[g.key] === i ? "true" : "false"}
+              style={g.kind === "swatch" ? `--swatch:${g.colors?.[i]}` : undefined}
+            >
+              {g.kind === "style" && (
+                <svg viewBox={g.view} aria-hidden="true" set:html={renderFaceSvg({ ...face, [g.key]: i })} />
+              )}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+    ))
+  }
+</div>
+
+<script src="../scripts/avatar-editor.ts"></script>
+
+<style>
+  .avatar-editor {
+    display: grid;
+    gap: 0.9rem;
+    min-width: 0;
+    text-align: left;
+  }
+  .ae-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+  }
+  .ae-preview {
+    width: 8rem;
+    height: 8rem;
+    border-radius: 50%;
+    border: 1px solid var(--border, #e8e0d6);
+    flex: none;
+  }
+  .ae-shuffle {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--border, #e8e0d6);
+    background: var(--card, #fff);
+    color: inherit;
+    cursor: pointer;
+  }
+  .ae-group {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0; /* fieldsets default to min-width: min-content, which overflows on phones */
+  }
+  .ae-group legend {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.65;
+    padding: 0;
+    margin-bottom: 0.3rem;
+  }
+  .ae-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .ae-opt {
+    width: 2.6rem;
+    height: 2.6rem;
+    padding: 0;
+    border-radius: 0.6rem;
+    border: 2px solid transparent;
+    background: var(--card, #fff);
+    outline: 1px solid var(--border, #e8e0d6);
+    cursor: pointer;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ae-opt svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .ae-swatch {
+    border-radius: 50%;
+    background: var(--swatch);
+  }
+  .ae-opt[aria-pressed="true"] {
+    border-color: var(--ink, #2b2420);
+    outline-color: var(--ink, #2b2420);
+  }
+  .ae-opt:focus-visible,
+  .ae-shuffle:focus-visible {
+    outline: 2px solid var(--ink, #2b2420);
+    outline-offset: 2px;
+  }
+</style>

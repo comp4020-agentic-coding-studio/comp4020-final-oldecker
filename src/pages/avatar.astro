@@ -1,0 +1,90 @@
+---
+import AvatarEditor from "../components/AvatarEditor.astro";
+import { currentPerson } from "../lib/identity";
+
+export const prerender = false;
+
+const person = currentPerson(Astro.cookies);
+if (!person) return Astro.redirect("/");
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>edit your avatar - the board</title>
+    <style>
+      /* same theme tokens as index.astro, so the editor component's
+         var(--bg/--ink/--card/--border) resolve identically here */
+      :root {
+        color-scheme: light dark;
+        --bg: #faf7f2;
+        --ink: #2b2420;
+        --card: #ffffff;
+        --border: #e8e0d6;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1a1b26;
+          --ink: #c0caf5;
+          --card: #24283b;
+          --border: #3b4261;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 480px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 3rem;
+      }
+      h1 {
+        font-size: 1.3rem;
+        margin: 0 0 1rem;
+        text-align: center;
+      }
+      .actions {
+        display: flex;
+        gap: 0.6rem;
+        justify-content: center;
+        margin-top: 1.4rem;
+      }
+      .actions button,
+      .actions a {
+        font: inherit;
+        padding: 0.55rem 1.1rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .actions button {
+        background: var(--ink);
+        color: var(--bg);
+        border-color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>edit your avatar</h1>
+      <form method="post" action="/api/avatar">
+        <AvatarEditor value={person.avatar} />
+        <div class="actions">
+          <a href="/">cancel</a>
+          <button type="submit">save</button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>

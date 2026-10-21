@@ -497,3 +497,57 @@ took screenshots of the empty room and with 1 and 5 guests, light and dark,
 at 1920x1080 and 390x844 (no horizontal overflow in any), and did a real mouse
 drag of `#party-you` into the room (guest appears, chip hides) and back out
 (guest gone, chip returns).
+
+## Build-your-own face avatars replace the six creatures
+
+The fixed set of six Australian folklore creatures was a choice made once at
+join and never revisitable, and it stopped fitting an app where the avatar is
+the main thing that says who you are in a strip, a party room and a post
+header. The user decided: a face builder only, the creatures go away as a
+choice. Flat and Bitmoji-ish rather than realistic --- skin, hair colour,
+hairstyle, eyebrows, eyes, mouth, facial hair, glasses, extras (beanie, cap,
+headband, earrings, flower, headphones, party hat), outfit and backdrop colour.
+
+**Storage, and why there is no migration.** A face is eleven small integers,
+each an index into an option list in `src/lib/face.ts`, stored as compact JSON
+in the existing `people.avatar` text column. Another change this round owns
+the only migration, and a column of text that already held "a key into a
+table" is happy to hold "a key into eleven tables" instead. The side benefit
+is that the SVG is built only from constants in that file: no user-controlled
+string is ever interpolated into markup, so `set:html` and `innerHTML` stay
+safe. `parseAvatar()` is the one gatekeeper --- exact key set, in-range
+integers, 200-character cap --- and the API re-serialises to canonical form
+before saving, so the column only ever holds the known shape.
+
+**One renderer, three kinds of caller.** `renderAvatarSvg()` is imported by
+the server page, `live.ts`, `party-dom.ts` and the editor itself, so the
+preview is exactly what appears everywhere. Saving at `POST /api/avatar` is
+form-encoded (the CSRF note in `score.ts` applies), updates only the cookie
+owner's row, writes an `avatar_update` audit line, and re-broadcasts the
+presence list and, if you are in it, your party-room entry, so other open tabs
+change live rather than on their next reload.
+
+**Legacy rows.** Old rows hold ids like `bunyip`. I kept `avatars.ts` purely as
+a fallback: those ids still draw the old creature, so no old post changes
+under anyone, and nothing was deleted. Anything unrecognisable draws a neutral
+default face instead of a blank circle. `/api/join` still accepts the six
+legacy ids so the spec tests (which join as `bunyip`) pass unchanged.
+
+**The eye lesson carried over.** `avatars.ts` documents a past caricature
+mistake (white sclera under a dark pupil on a dark fill). Every eye style here
+is ink marks with at most a tiny highlight, mouths are ink or a dark open
+shape, and features are drawn identically on every skin tone, which only
+changes the skin fills. I checked it by rendering 24 random faces at 150, 32
+and 28px and looking at them, across the full tone range.
+
+**Reusable for the signup merge.** The editor is `AvatarEditor.astro` plus
+`avatar-editor.ts`: it drops into any form and submits one hidden `avatar`
+field. The join form uses it, seeded with `randomFace()`.
+
+**How it was verified:** a disposable Playwright script (not committed) joined
+through the editor, edited at `/avatar`, and checked that a second browser
+context saw the change in the presence strip and a joining guest appear in the
+party room over SSE, at 1920x1080 and 390x844, light and dark, with no
+horizontal overflow and no console errors. A legacy `bunyip` row still renders
+as its creature. `POST /api/avatar` returns 401 with no cookie and 400 for
+garbage, wrong-shape, out-of-range, 50KB and JSON-bodied requests.
