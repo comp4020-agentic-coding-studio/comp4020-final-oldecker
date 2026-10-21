@@ -398,3 +398,31 @@ fixed code the ghost kept following the cursor through the mid-drag DOM
 replacement and was gone on mouseup. The two normal flows --- dropping
 inside the zone to join, dropping outside to no-op --- were re-checked the
 same way and are unaffected.
+
+## Names under the who's-online avatars
+
+The presence strip at the top of the board showed bare avatar circles, so
+you had to hover to learn who anyone was --- and on a phone there is no
+hover. The party room already solved this: a small, muted, ellipsis-truncated
+name under each avatar. The presence strip now uses the same shape (a
+`.presence-guest` column holding the existing `.presence-avatar` circle and a
+new `.presence-name` label), with the full name still in the `title` tooltip.
+
+Three things kept this from being a one-line change. The strip is built twice
+--- SSR markup in `index.astro` and `renderPresence()` in `live.ts` on every
+presence event --- so both had to change together, and the new classes are
+`:global()` for the usual reason (scoped CSS never reaches `innerHTML`
+elements). The old code only escaped `"` in names, which is fine for an
+attribute but not now that the name is also inserted as element text, so
+`renderPresence()` reuses `escapeHtml` from `party-dom.ts` (now exported)
+rather than growing a second copy. And since every entry is now 3rem wide
+rather than 1.8rem, the strip got `flex-wrap` so a busy board wraps instead of
+pushing the page sideways on mobile; the label has `max-width: 100%` and
+truncates rather than widening its column.
+
+**How it was verified:** a throwaway Playwright script joined two people in
+separate contexts (one with `<b>&"x"` in their name, one with a very long
+name) and checked that each saw the other's name under their avatar both on
+initial load and after a live presence update, that the markup was escaped
+(the name appears as text, not a `<b>` element), and that the page had no
+horizontal overflow at 390x844 and 1920x1080.

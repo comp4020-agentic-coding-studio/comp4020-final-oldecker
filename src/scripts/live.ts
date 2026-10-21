@@ -7,7 +7,7 @@ import type { PlantStage } from "../lib/plant-art";
 import { avatarById } from "../lib/avatars";
 import { PALETTE } from "../lib/canvas";
 import { applyCanvasName } from "./canvas-dom";
-import { applyPartyJoin, applyPartyLeave, renderPartyRoom, type PartyGuest } from "./party-dom";
+import { applyPartyJoin, escapeHtml, applyPartyLeave, renderPartyRoom, type PartyGuest } from "./party-dom";
 import { applyPlantHealth, applyPlantName } from "./plant-dom";
 import { pourIntoPlant } from "./water-pour";
 
@@ -40,8 +40,8 @@ function renderPresence(here: PresenceEvent["here"]): void {
   presenceEl.innerHTML = here
     .map((p) => {
       const avatar = avatarById(p.avatar);
-      const safeName = p.name.replace(/"/g, "&quot;");
-      return `<span class="presence-avatar" title="${safeName}"><svg viewBox="0 0 64 64" aria-hidden="true">${avatar?.svg ?? ""}</svg></span>`;
+      const safeName = escapeHtml(p.name);
+      return `<span class="presence-guest" title="${safeName}"><span class="presence-avatar"><svg viewBox="0 0 64 64" aria-hidden="true">${avatar?.svg ?? ""}</svg></span><span class="presence-name">${safeName}</span></span>`;
     })
     .join("");
 }

@@ -37,7 +37,7 @@ function guestEl(guest: PartyGuest, isOwn: boolean): HTMLElement {
   return el;
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 

@@ -1041,10 +1041,22 @@ const CATEGORY_LABEL: Record<string, string> = {
       /* --- who's here -------------------------------------------------- */
       .presence {
         display: flex;
-        align-items: center;
-        gap: 0.3rem;
+        /* wrap rather than overflow: each entry is now name-wide, so a busy
+           board no longer fits on one phone-width row. */
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 0.3rem 0.5rem;
         margin-bottom: 1rem;
         min-height: 1.8rem;
+      }
+      /* same column-with-a-name-label shape as .party-guest. */
+      :global(.presence-guest) {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
+        width: 3rem;
+        min-width: 0;
       }
       /* :global(): live.ts's renderPresence() rebuilds this strip's
          children client-side via innerHTML on every presence broadcast ---
@@ -1063,10 +1075,20 @@ const CATEGORY_LABEL: Record<string, string> = {
         align-items: center;
         justify-content: center;
         overflow: hidden;
+        flex: none;
       }
       :global(.presence-avatar svg) {
         width: 100%;
         height: 100%;
+      }
+      :global(.presence-name) {
+        max-width: 100%;
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       /* also rebuilt client-side by live.ts's renderPresence() --- same
          :global() reasoning as .presence-avatar above. */
@@ -1104,8 +1126,11 @@ const CATEGORY_LABEL: Record<string, string> = {
                 initialPresence.map((p) => {
                   const a = avatarById(p.avatar);
                   return (
-                    <span class="presence-avatar" title={p.name}>
-                      <svg viewBox="0 0 64 64" aria-hidden="true" set:html={a?.svg ?? ""} />
+                    <span class="presence-guest" title={p.name}>
+                      <span class="presence-avatar">
+                        <svg viewBox="0 0 64 64" aria-hidden="true" set:html={a?.svg ?? ""} />
+                      </span>
+                      <span class="presence-name">{p.name}</span>
                     </span>
                   );
                 })
