@@ -205,8 +205,8 @@ function hairBack(style: number, c: string): string {
         .join("");
     case 6: // afro
       return `<circle cx="32" cy="26" r="21.5" fill="${c}"/>`;
-    case 8: // mullet: the long back. Hidden behind the head above the ears, then flaring out under them and over the shoulders
-      return `<path d="M18 28 L18.5 38 C14 40 11.5 46 9.5 55 L16 52.5 L19 58 L25 53 L32 58 L39 53 L45 58 L48 52.5 L54.5 55 C52.5 46 50 40 45.5 38 L46 28Z" fill="${c}"/>`;
+    case 8: // modern mullet: the tail. Textured pieces flick out past the ears and jaw and drop to the nape (behind the head and neck layers, above the shoulders)
+      return `<path d="M20 26 L15 29.5 L12.4 34.5 L10.6 40.6 L13.6 39.6 L12.6 45.4 L15.8 43.4 L16.4 49.4 L19.6 45.4 L22 50.6 L25 46.6 L27.6 50.4 L32 47 L36.4 50.4 L39 46.6 L42 50.6 L44.4 45.4 L47.6 49.4 L48.2 43.4 L51.4 45.4 L50.4 39.6 L53.4 40.6 L51.6 34.5 L49 29.5 L44 26Z" fill="${c}"/>`;
     case 11: // horseshoe: the hair that is left, wrapping round behind the ears
       return `<path d="M18.2 22.5 C12.6 26 12.4 36.5 16.8 40.6 Q18.2 41.4 19.2 39.6 L19.2 22.5Z M45.8 22.5 C51.4 26 51.6 36.5 47.2 40.6 Q45.8 41.4 44.8 39.6 L44.8 22.5Z" fill="${c}"/>`;
     case 7: // bun
@@ -229,6 +229,26 @@ function headCap(y0: number): string {
   return `M${(32 - dx).toFixed(2)} ${y0} A${rx} ${ry} 0 ${y0 > 31 ? 1 : 0} 1 ${(32 + dx).toFixed(2)} ${y0}`;
 }
 
+// The faded sides of the modern mullet: hair colour at falling opacity, so the
+// skin shows through more and more towards the ear. Kept inside the head
+// outline so the ears stay fully visible. Also drawn under a beanie/cap (which
+// stop above the ears), via renderFaceSvg.
+function mulletSides(c: string): string {
+  // a strip hugging the head edge from y0 down to y1, `w` wide, on both sides
+  const strip = (y0: number, y1: number, w: number, op: number) => {
+    const edge = (y: number) => 15 * Math.sqrt(1 - ((y - 31) / 17) ** 2);
+    const ys = [0, 0.25, 0.5, 0.75, 1].map((k) => y0 + (y1 - y0) * k);
+    return [-1, 1]
+      .map((sd) => {
+        const out = ys.map((y) => `${(32 + sd * edge(y)).toFixed(2)} ${y.toFixed(2)}`);
+        const inn = ys.map((y) => `${(32 + sd * (edge(y) - w * (1 - 0.35 * ((y - y0) / (y1 - y0))))).toFixed(2)} ${y.toFixed(2)}`).reverse();
+        return `<path d="M${out.join(" L")} L${inn.join(" L")}Z" fill="${c}" opacity="${op}"/>`;
+      })
+      .join("");
+  };
+  return strip(22, 29, 4.6, 0.85) + strip(22, 33, 3.4, 0.45) + strip(22, 37.5, 2.4, 0.3);
+}
+
 function hairFront(style: number, c: string): string {
   switch (style) {
     case 1: // buzz
@@ -246,8 +266,16 @@ function hairFront(style: number, c: string): string {
       return `<path d="${headCap(29)} C45 23.5 40 21 32 21 C24 21 19 23.5 16.5 29Z" fill="${c}"/>`;
     case 7: // bun: centre-parted cap
       return `<path d="${headCap(32)} C46 25 40.5 20.5 32 18.5 C23.5 20.5 18 25 16.5 32Z" fill="${c}"/>`;
-    case 8: // mullet: short, choppy top and fringe; ears stay clear
-      return `<path d="${headCap(31)} C46.5 26 44.5 23 41 21.5 C38 23.5 34 22.5 32 20.5 C29.5 23 24 23.5 21.5 21 C19.5 23.5 17.5 27 16.5 31Z" fill="${c}"/>`;
+    case 8: // modern mullet: a low, rounded textured crop pushed forward, jagged fringe tips on the forehead, faded sides (see mulletSides)
+      return (
+        // the crown cap keeps skin from showing above the hair, whatever the clumps do
+        `<path d="${headCap(27)} C45.5 22.5 40 19.5 32 19.5 C24 19.5 18.5 22.5 16.9 27Z" fill="${c}"/>` +
+        `<path d="M16.2 29 C14.4 22.5 14.8 16.5 18.6 13.4 Q19.6 10.6 23.4 11 Q26 8.8 29.6 10.2 Q33.2 8.4 36.2 10.2 Q39.8 9.2 41.8 11.8 Q45.6 11.8 46.6 15.8 C49.2 19.4 49.6 24.4 47.8 29 L45.8 25.2 L43.4 26 L42.2 22.6 L39.4 25.6 L36.8 22.8 L34.2 26 L31.4 23.2 L28.4 26 L25.8 23 L23.4 25.6 L20.8 23.2 L19 26.4 L17.6 24.6Z" fill="${c}"/>` +
+        // texture: short curved strands through the crop
+        `<path d="M22.4 13.6 Q21.4 16.4 22.4 19 M28.6 12.2 Q27.6 15.4 28.6 18.6 M35.4 12.2 Q34.6 15.2 35.6 18.4 M41.6 14 Q40.8 16.6 41.6 19.2" stroke="#000" stroke-opacity="0.2" stroke-width="1.1" stroke-linecap="round" fill="none"/>` +
+        `<path d="M25.4 12 Q24.6 14.4 25.2 16.6 M32 11.4 Q31.4 13.8 32 16 M38.6 12.6 Q38 14.6 38.6 16.6" stroke="#fff" stroke-opacity="0.2" stroke-width="1" stroke-linecap="round" fill="none"/>` +
+        mulletSides(c)
+      );
     // --- balding stages (appended after the mullet: never reorder) ---
     case 9: // receding: M-shaped hairline, temples pulled back, widow's peak
       return `<path d="${headCap(32)} C46.6 27.5 45 23.5 42.5 19.8 Q38.5 18 36.2 20 Q32 24.8 27.8 20 Q25.5 18 21.5 19.8 C19 23.5 17.4 27.5 16.3 32Z" fill="${c}"/>`;
@@ -432,7 +460,7 @@ export function renderFaceSvg(face: FaceConfig): string {
     `<path d="M31 34.6 Q32.2 37 34.2 36.4" stroke="${skin.shade}" stroke-width="1.5" fill="none" stroke-linecap="round"/>`,
     beard(face.bd, hair.base, skin.base),
     mouth(face.mo, skin.ink),
-    hatCovers ? "" : hairFront(face.hs, hair.base),
+    hatCovers ? (face.hs === 8 ? mulletSides(hair.base) : "") : hairFront(face.hs, hair.base),
     eyes(face.ey),
     brows(face.br, hair.dark),
     glasses(face.gl, outfit),
