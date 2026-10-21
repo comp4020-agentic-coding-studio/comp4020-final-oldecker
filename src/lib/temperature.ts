@@ -45,6 +45,38 @@ export function colorForScore(score: number): string {
   return score === 0 ? "var(--temp-neutral-ink)" : score < 0 ? "var(--temp-cold)" : "var(--temp-hot)";
 }
 
+// --- the card glow ----------------------------------------------------------
+// A post the group has rated strongly gets a hot or cold halo. One number,
+// strength 0..1, is the product of two ramps:
+//
+//   extremity  = clamp((|median| - 20) / 60, 0, 1)   0 at |median| <= 20, full at >= 80
+//   confidence = min(1, votes / 6)                   one voter = 1/6, six or more = full
+//   strength   = extremity * confidence
+//
+// so one person dragging to 🔥 (100) tops out at 0.17 --- a whisper --- while
+// eight people around the same median reach 1. The direction is the sign of
+// the median (not the mean: one outlier can't flip the colour). Below 0.06 the
+// card looks ordinary. Shared by the server render (src/pages/h/[slug].astro)
+// and the client redraw after you vote (src/scripts/temperature-slider.ts).
+const GLOW_FULL_VOTES = 6;
+const GLOW_MIN_STRENGTH = 0.06;
+
+export interface Glow {
+  kind: "hot" | "cold" | null;
+  /** 0..1, rounded to 2 decimals so server and client print the same CSS */
+  strength: number;
+}
+
+export function glowFor(scores: number[]): Glow {
+  const med = median(scores);
+  if (med === null) return { kind: null, strength: 0 };
+  const extremity = Math.min(1, Math.max(0, (Math.abs(med) - 20) / 60));
+  const confidence = Math.min(1, scores.length / GLOW_FULL_VOTES);
+  const strength = Math.round(extremity * confidence * 100) / 100;
+  if (strength < GLOW_MIN_STRENGTH) return { kind: null, strength: 0 };
+  return { kind: med > 0 ? "hot" : "cold", strength };
+}
+
 export interface TempDot {
   x: number;
   y: number;

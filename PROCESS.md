@@ -1040,3 +1040,49 @@ gets a bunk live; and mouse drags into the party room and onto the street
 door, plus a touch drag on the phone, still work, while a double-click on
 your own avatar triggers neither a drop nor a heart. A one-member house and
 a fifteen-member house rendered without horizontal scroll at both widths.
+
+## Hot and cold posts glow, and the invite copy button stops lying
+
+Two small things from the same round of feedback.
+
+**The invite link.** The report was that "copy" puts a generic link on the
+clipboard. I couldn't make the handler copy the wrong string: in a real
+Chromium (desktop and a 390px touch context, clipboard permissions granted) it
+copied exactly the absolute `/join/<code>` URL shown in the box. What I could
+reproduce was the failure path. `navigator.clipboard` only exists in a secure
+context, so over plain http (a phone hitting a LAN address) or in an in-app
+browser the old code fell into its `catch`, selected the text, and changed the
+button to "selected" --- without copying anything. The clipboard kept whatever
+was there before, usually some other link, which is exactly "it copied a
+generic link". The first paint also showed only the relative path until the
+script ran. The fix: the server renders the absolute URL, the script rebuilds
+it from `location.origin` and the house's `data-path`, and that one string is
+both shown and copied. Copying now tries the async API, then
+`execCommand("copy")` on the selected input, and only then falls back to
+leaving the text selected with a "press and hold" hint. A "copied!" label and
+a live-region message confirm it.
+
+**The glow.** A post the group rates strongly now glows: red/orange for hot,
+icy blue for cold, using the existing `--temp-hot` / `--temp-cold` tokens plus
+`--glow-alpha` (light and dark). Strength is one number from 0 to 1, in
+`glowFor()` in `src/lib/temperature.ts`:
+
+    extremity  = clamp((|median| - 20) / 60, 0, 1)
+    confidence = min(1, votes / 6)
+    strength   = extremity * confidence      (under 0.06 shows nothing)
+
+The median sets the colour, so one outlier can't flip it. One person dragging
+to 100 gives 0.17, a whisper; six or more around 80 gives 1. The halo is a
+`box-shadow` and a tint on the top, right and bottom borders only, so the left
+border stays the feeling/doing colour. The server sets `--glow` on first paint
+and `temperature-slider.ts` calls the same function on the scores the vote
+response already returns, so a vote and a reload agree.
+
+**Verified:** `pnpm typecheck` clean and the spec green against a fresh build.
+A throwaway Playwright script read the real clipboard on desktop and a phone
+viewport, and again with `navigator.clipboard` removed (it now still copies,
+via `execCommand`). Eight members rated six posts (eight hot, eight cold, one
+hot vote only, neutral, three cold, four medium hot): glow came out 1, 1,
+0.17, none, 0.5 and 0.33, in light and dark at 1920 and 390 wide with no
+horizontal scroll, and a vote that tipped a post redrew its glow to match a
+reload.
