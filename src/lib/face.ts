@@ -205,8 +205,8 @@ function hairBack(style: number, c: string): string {
         .join("");
     case 6: // afro
       return `<circle cx="32" cy="26" r="21.5" fill="${c}"/>`;
-    case 8: // modern mullet: a short, choppy tail at the nape (ends at the top of the neck, nowhere near the shoulders)
-      return `<path d="M19 30 L17.8 39 L19 43 L21.4 41.4 L22.6 45.4 L25.2 42.6 L27 46 L29.6 43 L32 45.4 L34.4 43 L37 46 L38.8 42.6 L41.4 45.4 L42.6 41.4 L45 43 L46.2 39 L45 30Z" fill="${c}"/>`;
+    case 8: // modern mullet: the tail. Textured pieces flick out past the ears and jaw and drop to the nape (behind the head and neck layers, above the shoulders)
+      return `<path d="M20 26 L15 29.5 L12.4 34.5 L10.6 40.6 L13.6 39.6 L12.6 45.4 L15.8 43.4 L16.4 49.4 L19.6 45.4 L22 50.6 L25 46.6 L27.6 50.4 L32 47 L36.4 50.4 L39 46.6 L42 50.6 L44.4 45.4 L47.6 49.4 L48.2 43.4 L51.4 45.4 L50.4 39.6 L53.4 40.6 L51.6 34.5 L49 29.5 L44 26Z" fill="${c}"/>`;
     case 11: // horseshoe: the hair that is left, wrapping round behind the ears
       return `<path d="M18.2 22.5 C12.6 26 12.4 36.5 16.8 40.6 Q18.2 41.4 19.2 39.6 L19.2 22.5Z M45.8 22.5 C51.4 26 51.6 36.5 47.2 40.6 Q45.8 41.4 44.8 39.6 L44.8 22.5Z" fill="${c}"/>`;
     case 7: // bun
@@ -266,14 +266,14 @@ function hairFront(style: number, c: string): string {
       return `<path d="${headCap(29)} C45 23.5 40 21 32 21 C24 21 19 23.5 16.5 29Z" fill="${c}"/>`;
     case 7: // bun: centre-parted cap
       return `<path d="${headCap(32)} C46 25 40.5 20.5 32 18.5 C23.5 20.5 18 25 16.5 32Z" fill="${c}"/>`;
-    case 8: // modern mullet: tousled, choppy volume on top, a faded side (see mulletSides)
+    case 8: // modern mullet: a low, rounded textured crop pushed forward, jagged fringe tips on the forehead, faded sides (see mulletSides)
       return (
-        // the crown cap keeps skin from showing above the hair, whatever the spikes do
+        // the crown cap keeps skin from showing above the hair, whatever the clumps do
         `<path d="${headCap(27)} C45.5 22.5 40 19.5 32 19.5 C24 19.5 18.5 22.5 16.9 27Z" fill="${c}"/>` +
-        `<path d="M16.2 29 C14.6 24 15.4 20 17.6 16.6 L16.8 11.8 L22 14.6 L23.4 8.8 L28 12.6 L31 7 L35 11.6 L38.6 8.2 L41 13 L46.2 10.4 L45.6 17 C48.4 20.4 49 24.4 47.8 29 L45.6 24 L43 21 L40.6 23.8 L37.6 20.6 L34.6 23.8 L31.6 21 L28.2 23.6 L25 20.6 L22.2 23.8 L20.4 21 L18.4 24.6Z" fill="${c}"/>` +
-        // texture: a few darker and lighter strands through the top
-        `<path d="M23.4 12 L21.6 18.5 M31 10 L29 17.5 M38.6 11.5 L38 18 M44.6 14 L42 19" stroke="#000" stroke-opacity="0.22" stroke-width="1.1" stroke-linecap="round" fill="none"/>` +
-        `<path d="M26.2 13.4 L25 17.6 M34.6 13 L33.6 16.4 M41.8 15 L40.4 18" stroke="#fff" stroke-opacity="0.2" stroke-width="1" stroke-linecap="round" fill="none"/>` +
+        `<path d="M16.2 29 C14.4 22.5 14.8 16.5 18.6 13.4 Q19.6 10.6 23.4 11 Q26 8.8 29.6 10.2 Q33.2 8.4 36.2 10.2 Q39.8 9.2 41.8 11.8 Q45.6 11.8 46.6 15.8 C49.2 19.4 49.6 24.4 47.8 29 L45.8 25.2 L43.4 26 L42.2 22.6 L39.4 25.6 L36.8 22.8 L34.2 26 L31.4 23.2 L28.4 26 L25.8 23 L23.4 25.6 L20.8 23.2 L19 26.4 L17.6 24.6Z" fill="${c}"/>` +
+        // texture: short curved strands through the crop
+        `<path d="M22.4 13.6 Q21.4 16.4 22.4 19 M28.6 12.2 Q27.6 15.4 28.6 18.6 M35.4 12.2 Q34.6 15.2 35.6 18.4 M41.6 14 Q40.8 16.6 41.6 19.2" stroke="#000" stroke-opacity="0.2" stroke-width="1.1" stroke-linecap="round" fill="none"/>` +
+        `<path d="M25.4 12 Q24.6 14.4 25.2 16.6 M32 11.4 Q31.4 13.8 32 16 M38.6 12.6 Q38 14.6 38.6 16.6" stroke="#fff" stroke-opacity="0.2" stroke-width="1" stroke-linecap="round" fill="none"/>` +
         mulletSides(c)
       );
     // --- balding stages (appended after the mullet: never reorder) ---
