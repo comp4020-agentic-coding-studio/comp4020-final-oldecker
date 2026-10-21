@@ -10,6 +10,9 @@
 // change has to redraw the corridor too, and it needs the latest presence
 // list to do that.
 import { renderAvatarSvg } from "../lib/face";
+import { escapeHtml } from "../lib/html";
+
+export { escapeHtml };
 
 export interface PartyGuest {
   personId: string;
@@ -29,15 +32,6 @@ const emptyLabel = document.querySelector<HTMLElement>("#party-room-empty");
 const yourChip = document.querySelector<HTMLElement>("#party-you");
 const corridorEl = document.querySelector<HTMLElement>("#corridor-guests");
 const corridorEmpty = document.querySelector<HTMLElement>("#corridor-empty");
-
-export function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function chipHtml(name: string, avatar: string): string {
   return `<span class="party-avatar-circle"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(avatar)}</svg></span><span class="party-guest-name">${escapeHtml(name)}</span>`;

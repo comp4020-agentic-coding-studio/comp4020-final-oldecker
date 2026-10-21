@@ -1,0 +1,155 @@
+/* "ich hab dich lieb": the toasts and the floating hearts. GLOBAL, like
+   bedroom.css: every element here is created by src/scripts/lieb.ts, and
+   Astro's scoped CSS never reaches client-built elements. */
+
+/* other people's avatars (corridor, party room, bedroom) take a double-click
+   or double-tap; neither should select text or zoom the page */
+.corridor-guest,
+.party-room-avatar:not([data-own]) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.lieb-toasts {
+  position: fixed;
+  z-index: 2000;
+  left: 50%;
+  bottom: 1.2rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  pointer-events: none;
+}
+.lieb-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.45rem 0.6rem 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--lieb);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 0.4rem 1.2rem var(--room-shadow);
+  font-size: 0.9rem;
+  animation: lieb-toast-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.lieb-toast.quiet {
+  border-color: var(--border);
+}
+.lieb-toast.leaving {
+  opacity: 0;
+  transform: translateY(0.5rem);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.lieb-toast-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lieb-toast-text strong {
+  font-weight: 600;
+}
+.lieb-toast-heart {
+  color: var(--lieb);
+}
+.lieb-toast-when {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.lieb-toast-close {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--lieb-soft);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+@keyframes lieb-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.8rem) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* a burst of hearts rising off an avatar: positioned (fixed) over the
+   avatar's own box, so a live re-render of the corridor or the bedroom
+   underneath it can't cut the animation short */
+.lieb-burst {
+  position: fixed;
+  z-index: 1900;
+  pointer-events: none;
+}
+.lieb-burst span {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  color: var(--lieb);
+  font-size: var(--size, 1.3rem);
+  line-height: 1;
+  transform: translate(-50%, -50%) scale(0);
+  animation: lieb-float 1.6s ease-out forwards;
+  animation-delay: var(--delay, 0s);
+}
+.lieb-burst .big {
+  animation-name: lieb-pop;
+  animation-duration: 1.4s;
+}
+@keyframes lieb-pop {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  25% {
+    transform: translate(-50%, -60%) scale(1.25);
+    opacity: 1;
+  }
+  45% {
+    transform: translate(-50%, -60%) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -110%) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes lieb-float {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx, 0px)), -260%) scale(1);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lieb-burst span:not(.big) {
+    display: none;
+  }
+  .lieb-toast {
+    animation: none;
+  }
+}

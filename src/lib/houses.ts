@@ -13,6 +13,7 @@ import { randomBytes } from "node:crypto";
 import type { AstroCookies } from "astro";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
+import { broadcast } from "./events";
 import { currentPerson, type Person } from "./identity";
 import { houseMembers, houses, people } from "./schema";
 
@@ -106,9 +107,37 @@ export function isMember(houseId: number, personId: string): boolean {
 
 // Returns true only when this actually added a membership, so the caller
 // logs house_join once, not on every repeat visit of the same link.
+// A real new member is also announced to everyone with the house open, so
+// the bedroom grows a bunk for them without anyone reloading.
 export function addMember(houseId: number, personId: string): boolean {
   const row = db.insert(houseMembers).values({ houseId, personId }).onConflictDoNothing().returning().get();
+  if (row) {
+    const who = db
+      .select({ name: people.name, avatar: people.avatar })
+      .from(people)
+      .where(eq(people.id, personId))
+      .get();
+    if (who) broadcast(houseId, { type: "member_joined", data: { personId, ...who } });
+  }
   return !!row;
+}
+
+export interface Member {
+  personId: string;
+  name: string;
+  avatar: string;
+}
+
+// Everyone who lives here, online or not, in the order they moved in --- the
+// bedroom's bunks, so nobody swaps beds when someone else comes online.
+export function membersOf(houseId: number): Member[] {
+  return db
+    .select({ personId: people.id, name: people.name, avatar: people.avatar })
+    .from(houseMembers)
+    .innerJoin(people, eq(people.id, houseMembers.personId))
+    .where(eq(houseMembers.houseId, houseId))
+    .orderBy(asc(houseMembers.joinedAt), asc(people.createdAt), asc(people.id))
+    .all();
 }
 
 // Every house this person belongs to, oldest membership first --- the order

@@ -1,0 +1,338 @@
+/* The bedroom (src/lib/bedroom.ts builds the beds, src/scripts/bedroom-dom.ts
+   rebuilds them live). A GLOBAL stylesheet, imported from the house page's
+   frontmatter like tokens.css, on purpose: the bunks are rebuilt in the
+   browser on every presence change, and Astro's scoped CSS only reaches
+   elements it rendered itself --- the bug that's bitten this page twice.
+   Everything is namespaced under .bedroom so nothing leaks onto the page.
+
+   One unit, --u, sizes the whole bed (the frame's viewBox is 128x150 units),
+   so the phone layout is one variable, not a dozen overrides. */
+.bedroom {
+  --u: 1.3px;
+  grid-column: 1 / -1;
+  position: relative;
+  min-width: 0;
+  padding: 1rem 1rem 0;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle, var(--bed-wall-dot) 1.6px, transparent 2px) 0 0 / 22px 22px,
+    var(--bed-wall);
+}
+.bedroom-head {
+  position: relative;
+  z-index: 1;
+  /* leaves the top-right corner to the night window */
+  padding-right: 5.5rem;
+}
+.bedroom-head h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+}
+.bedroom-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.bedroom-count {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.45rem;
+  border-radius: 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  font-size: 0.7rem;
+  font-weight: normal;
+  color: var(--text-muted);
+  vertical-align: 0.1em;
+}
+
+/* --- the room's set dressing: a night window and the floor ------------- */
+.bedroom-scene {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.bedroom-window {
+  position: absolute;
+  top: 0.8rem;
+  right: 1rem;
+  width: 4.2rem;
+  display: block;
+}
+.bedroom-floor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.1rem;
+  border-top: 4px solid var(--bed-skirting);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 51px, var(--bed-floor-line) 51px 53px),
+    var(--bed-floor);
+}
+.bw-frame {
+  fill: var(--bed-frame);
+}
+.bw-night {
+  fill: var(--bed-night);
+}
+.bw-moon {
+  fill: var(--bed-moon);
+}
+.bw-moon-bite {
+  fill: var(--bed-night);
+}
+.bw-star {
+  fill: var(--bed-star);
+}
+.bw-bar {
+  stroke: var(--bed-frame);
+}
+.bw-curtain {
+  fill: var(--bed-blanket-a);
+  opacity: 0.85;
+}
+
+/* --- the beds ------------------------------------------------------------
+   A wrapping row standing on the floor: one bed for 1-2 members, eight for
+   15, as many rows as the width needs. A later row reads as beds further
+   back against the wall. */
+.bedroom-beds {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 0.9rem 1.4rem;
+  margin-top: 0.6rem;
+  padding: 0 0 0.55rem;
+}
+.bunk-bed {
+  --blanket: var(--bed-blanket-a);
+  position: relative;
+  flex: none;
+  width: calc(128 * var(--u));
+  height: calc(150 * var(--u));
+}
+.bunk-bed:nth-child(4n + 2) {
+  --blanket: var(--bed-blanket-b);
+}
+.bunk-bed:nth-child(4n + 3) {
+  --blanket: var(--bed-blanket-c);
+}
+.bunk-bed:nth-child(4n + 4) {
+  --blanket: var(--bed-blanket-d);
+}
+/* a soft shadow on the boards under each bed */
+.bunk-bed::after {
+  content: "";
+  position: absolute;
+  left: -4%;
+  right: -4%;
+  bottom: calc(-4 * var(--u));
+  height: calc(8 * var(--u));
+  border-radius: 50%;
+  background: var(--room-shadow);
+  z-index: -1;
+}
+.bunk-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+.bed-frame {
+  fill: var(--bed-frame);
+}
+.bed-frame-dark {
+  fill: var(--bed-frame-dark);
+}
+.bed-rung {
+  stroke: var(--bed-frame-dark);
+  stroke-width: 3;
+  stroke-linecap: round;
+  fill: none;
+}
+.bed-grain {
+  stroke: var(--bed-frame-dark);
+  stroke-width: 1;
+  opacity: 0.45;
+  fill: none;
+}
+.bed-sheet {
+  fill: var(--bed-sheet);
+}
+
+/* one bunk: a 94x34-unit slot sitting on its mattress */
+.bunk {
+  position: absolute;
+  left: calc(9 * var(--u));
+  width: calc(94 * var(--u));
+  height: calc(34 * var(--u));
+  user-select: none;
+  -webkit-user-select: none;
+  /* a quick double-tap is a heart, not a zoom */
+  touch-action: manipulation;
+}
+.bunk-top {
+  top: calc(20 * var(--u));
+}
+.bunk-bottom {
+  top: calc(88 * var(--u));
+}
+.bunk-bedding {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+.bed-pillow {
+  fill: var(--bed-pillow);
+  stroke: var(--bed-pillow-edge);
+  stroke-width: 1;
+}
+.bed-blanket {
+  fill: var(--blanket);
+}
+.bed-blanket-fold {
+  fill: var(--blanket);
+  filter: brightness(1.18);
+}
+.bed-blanket-hem {
+  stroke: var(--bed-frame-dark);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  opacity: 0.25;
+  fill: none;
+}
+/* the head on the pillow, the blanket tucked up to the chin */
+.bunk-head {
+  position: absolute;
+  left: calc(3 * var(--u));
+  top: calc(-5 * var(--u));
+  width: calc(25 * var(--u));
+  height: calc(25 * var(--u));
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--card);
+  border: 2px solid var(--bed-pillow-edge);
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease,
+    filter 0.25s ease;
+}
+.bunk-head svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.bunk-name {
+  position: absolute;
+  left: calc(29 * var(--u));
+  top: calc(16 * var(--u));
+  max-width: calc(64 * var(--u));
+  padding: 0 0.35rem;
+  border-radius: 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-size: max(9.5px, calc(10 * var(--u)));
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* asleep: dimmed, tilted into the pillow, with a little z rising */
+.bunk[data-state="asleep"] .bunk-head {
+  opacity: 0.6;
+  filter: grayscale(0.5);
+  transform: rotate(-14deg) translateY(calc(2 * var(--u)));
+}
+.bunk[data-state="asleep"] .bunk-name {
+  color: var(--text-muted);
+}
+.bunk-z {
+  position: absolute;
+  left: calc(22 * var(--u));
+  top: calc(-17 * var(--u));
+  font-size: max(10px, calc(11 * var(--u)));
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  color: var(--bed-z);
+  animation: bunk-snore 3s ease-in-out infinite;
+}
+.bunk-z i {
+  font-size: 0.75em;
+  margin-left: 0.1em;
+  vertical-align: 0.6em;
+}
+@keyframes bunk-snore {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateY(calc(-3 * var(--u)));
+    opacity: 1;
+  }
+}
+
+/* awake: sitting up a little, a warm ring, and the name in full ink */
+.bunk[data-state="awake"] .bunk-head {
+  border-color: var(--bed-awake);
+  border-width: 2.5px;
+  box-shadow: 0 0 0 4px var(--bed-awake-glow);
+  transform: translateY(calc(-3 * var(--u)));
+}
+.bunk[data-state="awake"] .bunk-name {
+  font-weight: 600;
+}
+.bunk[data-own] .bunk-head {
+  border-color: var(--ink);
+}
+/* someone else's bunk: double-click it for a heart */
+.bunk[data-person-id]:not([data-own]) {
+  cursor: pointer;
+}
+.bunk[data-person-id]:not([data-own]):hover .bunk-head {
+  transform: translateY(calc(-4 * var(--u))) scale(1.06);
+}
+.bunk-empty .bed-blanket,
+.bunk-empty .bed-blanket-fold {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bunk-z {
+    animation: none;
+  }
+}
+
+/* phone width: smaller beds so three fit across a 390px screen */
+@media (max-width: 520px) {
+  .bedroom {
+    --u: 0.8px;
+    padding: 0.8rem 0.6rem 0;
+  }
+  .bedroom-head {
+    padding-right: 4.2rem;
+  }
+  .bedroom-window {
+    width: 3.3rem;
+    right: 0.7rem;
+  }
+  .bedroom-beds {
+    gap: 0.8rem 0.55rem;
+  }
+}

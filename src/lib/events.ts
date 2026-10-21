@@ -31,12 +31,22 @@ export type LiveEvent =
   | {
       type: "party_snapshot";
       data: { guests: Array<{ personId: string; name: string; avatar: string; expiresAt: number }> };
-    };
+    }
+  // someone new moved in: the bedroom grows a bunk for them
+  | { type: "member_joined"; data: { personId: string; name: string; avatar: string } }
+  // PRIVATE: only ever sent with sendToPerson(), never broadcast --- see below
+  | { type: "lieb"; data: { id: number; fromPersonId: string; fromName: string; createdAt: number } };
 
 const bus = new EventEmitter();
 bus.setMaxListeners(0); // one listener per open browser tab; no fixed ceiling
 
 const channel = (houseId: number) => `house:${houseId}`;
+// One more channel per (house, person): what one member's open tabs in one
+// house hear and nobody else's do. A heart someone sends you is between the
+// two of you, so it goes down this channel rather than the house-wide one
+// with a "this is for X" field the client filters on --- that would still
+// put it on every member's wire, readable in anyone's devtools.
+const personalChannel = (houseId: number, personId: string) => `house:${houseId}:person:${personId}`;
 
 export function broadcast(houseId: number, event: LiveEvent): void {
   bus.emit(channel(houseId), event);
@@ -45,6 +55,19 @@ export function broadcast(houseId: number, event: LiveEvent): void {
 export function subscribe(houseId: number, onEvent: (event: LiveEvent) => void): () => void {
   bus.on(channel(houseId), onEvent);
   return () => bus.off(channel(houseId), onEvent);
+}
+
+// Targeted delivery: to this person's streams in this house only. Returns
+// whether at least one of their tabs was listening, so the caller knows if
+// it was actually delivered live or still needs showing on their next visit.
+export function sendToPerson(houseId: number, personId: string, event: LiveEvent): boolean {
+  return bus.emit(personalChannel(houseId, personId), event);
+}
+
+export function subscribePerson(houseId: number, personId: string, onEvent: (event: LiveEvent) => void): () => void {
+  const ch = personalChannel(houseId, personId);
+  bus.on(ch, onEvent);
+  return () => bus.off(ch, onEvent);
 }
 
 // houseId -> personId -> {name, avatar, connections}. "connections" rather

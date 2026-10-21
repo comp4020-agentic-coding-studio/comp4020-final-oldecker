@@ -282,3 +282,36 @@ export const partyGuests = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.houseId, table.personId] })],
 );
+
+// "ich hab dich lieb": one row per heart someone sent someone else, in the
+// house it was sent in (src/lib/lieb.ts). seenAt is null until the recipient
+// has actually been shown it --- live, if they had the house open when it
+// arrived, or on their next visit otherwise. `day` is the sender's Canberra
+// calendar date, and the unique index on (from, to, day) IS the once-a-day
+// limit: a second insert that day is a constraint no-op, not a check-then-
+// insert that two quick double-clicks could both slip past. The limit is per
+// pair of people, not per house --- two houses in common don't mean two a day.
+export const liebMessages = sqliteTable(
+  "lieb_messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    houseId: integer("house_id")
+      .notNull()
+      .references(() => houses.id),
+    fromPersonId: text("from_person_id")
+      .notNull()
+      .references(() => people.id),
+    toPersonId: text("to_person_id")
+      .notNull()
+      .references(() => people.id),
+    day: text("day").notNull(),
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+    seenAt: integer("seen_at"),
+  },
+  (table) => [
+    uniqueIndex("lieb_once_a_day").on(table.fromPersonId, table.toPersonId, table.day),
+    index("lieb_inbox_idx").on(table.houseId, table.toPersonId, table.seenAt),
+  ],
+);
