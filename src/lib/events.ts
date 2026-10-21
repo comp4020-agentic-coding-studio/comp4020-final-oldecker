@@ -54,6 +54,15 @@ export function markPresent(personId: string, name: string, avatar: string): voi
   broadcast({ type: "presence", data: { here: presenceSnapshot() } });
 }
 
+// A saved avatar edit: the presence entry cached at SSE-connect time would
+// otherwise show the old face until that person reconnected.
+export function updatePresenceAvatar(personId: string, avatar: string): void {
+  const existing = present.get(personId);
+  if (!existing) return;
+  existing.avatar = avatar;
+  broadcast({ type: "presence", data: { here: presenceSnapshot() } });
+}
+
 export function markAbsent(personId: string): void {
   const existing = present.get(personId);
   if (!existing) return;
