@@ -708,7 +708,8 @@ the stream opens, so nobody can watch a house's corridor or plant by holding
 a connection. Joining by name is the one deliberately open door: a name is
 something you're told, like a link, and for a closed group of friends I'd
 rather "type the name your friend said" just work than add a knock-and-wait
-approval step nobody will be around to answer. Joining is a POST, never a GET
+approval step nobody will be around to answer. (I changed my mind on this
+one --- see "Knocking" below.) Joining is a POST, never a GET
 (an invite link shows a "come in" button rather than joining on load), for
 the same reason logout is: a link preview or an `<img>` mustn't be able to
 change what you belong to. `spec/houses.test.ts` checks all of it as an
@@ -755,3 +756,84 @@ invite link, a second browser follows the link through signup and back to
 and the other sees it live, one drags onto the street door and lands on the
 street page, a second house appears on the street, dragging your avatar onto
 a house goes into it, and a third person gets the 403 door.
+
+## Knocking: typing a name now asks, an invite link still opens
+
+When houses shipped, typing a house's name on the street made you a member
+on the spot, and I defended that above as "a name is something you're told,
+like a link". It isn't, quite. A link is a 72-bit random code that only
+exists because someone inside copied it and handed it over; a name is
+something you can *guess*, and house names are the kind of thing people
+guess ("the board", "flat 4", someone's surname). So the two ways in now
+differ on purpose. **An invite link walks you straight in**, unchanged ---
+someone who lives there chose to give it to you, and that choice *is* the
+permission. **Typing a name knocks.** You are stood at the front door, not
+made a member, and you see nothing inside until someone who lives there
+answers. Any member can let you in or turn you away; I didn't add an
+owner or an admin, because nobody in a group of friends wants to be the
+bouncer and the house was always everyone's equally. My earlier worry ---
+"nobody will be around to answer" --- is why **a knock never expires**: it
+waits on the doormat until somebody opens the house, however long that is,
+and the knocker can walk away any time ("stop waiting"). If you're turned
+away you're told once, on your street page, and you can knock again later;
+nothing remembers it against you.
+
+**The model:** a `house_knocks` table (house, person, created, answered,
+who answered, outcome `pending` / `let_in` / `turned_away` / `cancelled`).
+Rows are never deleted, so it's also the history of who knocked where. "At
+most one pending knock per person per house" is a *partial* unique index
+(`WHERE outcome = 'pending'`), so knocking twice while you wait is the same
+knock, but once it's answered you're free to knock again. A `seen_at`
+column is what makes "you were turned away" a thing you're told once rather
+than every visit. The migration is a plain `CREATE TABLE` --- nothing
+existing is touched, so no post or photo is anywhere near it.
+
+**Server-side checks** (`src/lib/knock-routes.ts`, `src/lib/knocks.ts`),
+all on form-encoded POSTs so they stay inside Astro's same-origin check:
+letting in and turning away go through the same `houseAccess()` gate as
+every other house route, so only a current member of *that* house can
+answer, and a knock that isn't at that house's door is a 404 --- being a
+member of one house doesn't reach the doormat of another. Only the knocker
+can cancel their own knock (a member gets a 403: they answer, they don't
+cancel). Answering is an `UPDATE ... WHERE outcome = 'pending'`, so a knock
+that's already been answered is a no-op: if two people press "let in" and
+"turn away" at the same moment, exactly one wins, and the loser's request
+logs nothing, broadcasts nothing and creates no membership. Letting in adds
+the membership in the same transaction as closing the knock, so there's
+never a "let in" without a member row. Following an invite link while
+you're knocking closes the knock too, so nobody is left on a doormat for a
+house they're already in. Every step is in the audit log: `house_knock`,
+`house_let_in`, `house_turn_away`, `house_knock_cancel`, each with the
+house's slug and the knocker's name.
+
+**Live, both sides.** Members see knocks on a little porch at the top of
+the house page --- the front door from inside, a doormat, the knocker's face
+and "let in" / "turn away". A knock arriving, or being answered by anyone,
+goes over the house's own SSE channel, so every member's open page updates
+without a reload (and a reconnect gets a fresh snapshot, so a knock
+answered while your laptop slept doesn't linger). The knocker can't be on
+that channel --- they aren't a member, which is the whole point --- so they
+get a channel of their own, `/api/street-events`, keyed on their session
+and carrying only news about their own knocks. On their street the house
+they knocked on stands with their avatar on its doorstep; when they're let
+in it turns into one of their houses in place, windows and all, ready to
+tap or drag into, and when they're turned away it goes and they're told.
+
+**Verified:** `pnpm typecheck` clean; a new `spec/knocks.test.ts` (a knock
+grants nothing --- page, APIs and event stream all still 403; a member lets
+in and access works; a member turns away and it doesn't, the knocker is told
+once and can knock again; a non-member, a member of another house, the
+knocker themselves and a logged-out request can't answer; only the knocker
+can cancel; late answers change nothing; knock events reach that house's
+members and no one else; the knocker's own channel hears the answer; an
+invite link still walks straight in) plus the old name-join test rewritten
+for knocking, all green twice in a row against a fresh build on a scratch
+database. Then a throwaway Playwright script at 1920x1080 and 390x844, light
+and dark, with three people: A builds a house and stays in it; B knocks by
+name and sees "waiting at the door"; A sees B on the doormat live and lets
+them in; B's street turns the waiting lot into a house live and B walks in;
+C knocks, both A and B see it, A turns C away, B's doormat clears live and
+C's street tells them; C knocks again and then stops waiting, and A's page
+says so. No page scrolls sideways at either width. The screenshots caught
+one thing worth fixing: the door's little "knock knock" labels spilled over
+the text beside them, so they now sit on the door's edge.
