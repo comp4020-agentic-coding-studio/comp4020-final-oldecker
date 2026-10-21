@@ -1,0 +1,130 @@
+---
+// Shell for /login and /signup: same palette tokens as src/pages/index.astro
+// (warm paper in light mode, Tokyo Night in dark), a single centred card.
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · the board</title>
+    <style is:global>
+      :root {
+        color-scheme: light dark;
+        --bg: #faf7f2;
+        --ink: #2b2420;
+        --card: #ffffff;
+        --border: #e8e0d6;
+        --text-muted: #6b6862;
+        --danger: #a8302f;
+        --danger-bg: #fbeeed;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1a1b26;
+          --ink: #c0caf5;
+          --card: #24283b;
+          --border: #3b4261;
+          --text-muted: #8a93c0;
+          --danger: #f19999;
+          --danger-bg: #3a2530;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+      main {
+        max-width: 26rem;
+        margin: 0 auto;
+        padding: 3rem 1rem 4rem;
+      }
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.6rem;
+      }
+      .lede {
+        margin: 0 0 1.5rem;
+        color: var(--text-muted);
+      }
+      form.auth {
+        display: grid;
+        gap: 1rem;
+        padding: 1.25rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+      }
+      form.auth label.field {
+        display: grid;
+        gap: 0.3rem;
+        font-size: 0.85rem;
+      }
+      form.auth label.field > span {
+        opacity: 0.7;
+      }
+      form.auth input[type="text"],
+      form.auth input[type="password"] {
+        width: 100%;
+        min-width: 0;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-size: 1rem;
+      }
+      form.auth input:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 1px;
+      }
+      form.auth button[type="submit"] {
+        padding: 0.6rem 1.2rem;
+        border-radius: 999px;
+        border: none;
+        background: var(--ink);
+        color: var(--bg);
+        font: inherit;
+        cursor: pointer;
+      }
+      .hint {
+        margin: 0;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+      }
+      .error {
+        margin: 0;
+        padding: 0.6rem 0.8rem;
+        border-radius: 0.5rem;
+        background: var(--danger-bg);
+        color: var(--danger);
+        font-size: 0.9rem;
+      }
+      .alt {
+        margin-top: 1.25rem;
+        font-size: 0.9rem;
+        text-align: center;
+      }
+      .alt a {
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>

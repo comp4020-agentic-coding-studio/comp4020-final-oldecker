@@ -1,0 +1,89 @@
+---
+// The avatar part of the signup form, kept in one self-contained file so it
+// can be swapped for the face builder in one place. CONTRACT with
+// src/pages/signup.astro and the rest of the app: this component renders
+// form control(s) that submit a single field named `avatar` whose value is
+// whatever should be stored in `people.avatar`. The server validates that
+// value in src/lib/signup-avatar.ts --- replace that check when the value
+// stops being an id from AVATAR_IDS.
+import { AVATARS } from "../lib/avatars";
+
+interface Props {
+  selected?: string;
+}
+const { selected } = Astro.props;
+const chosen = AVATARS.some((a) => a.id === selected) ? selected : AVATARS[0].id;
+---
+
+<fieldset class="avatar-picker">
+  <legend>pick a mate</legend>
+  <div class="avatars">
+    {
+      AVATARS.map((a, i) => (
+        <>
+          <input type="radio" name="avatar" id={`a${i}`} value={a.id} checked={a.id === chosen} />
+          <label for={`a${i}`} title={a.name}>
+            <svg viewBox="0 0 64 64" aria-hidden="true" set:html={a.svg} />
+            <span class="sr-only">{a.name}</span>
+          </label>
+        </>
+      ))
+    }
+  </div>
+</fieldset>
+
+<style>
+  .avatar-picker {
+    border: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+  }
+  legend {
+    padding: 0;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+    opacity: 0.7;
+  }
+  .avatars {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.6rem;
+    justify-items: center;
+  }
+  .avatars label {
+    width: 3.4rem;
+    height: 3.4rem;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    border: 2px solid transparent;
+  }
+  .avatars label svg {
+    width: 2.6rem;
+    height: 2.6rem;
+  }
+  .avatars input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .avatars input:checked + label {
+    border-color: var(--ink);
+  }
+  .avatars input:focus-visible + label {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+</style>

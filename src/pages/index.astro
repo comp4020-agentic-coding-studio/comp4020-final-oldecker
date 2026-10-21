@@ -1,6 +1,6 @@
 ---
 import { and, desc, eq } from "drizzle-orm";
-import { AVATARS, avatarById } from "../lib/avatars";
+import { avatarById } from "../lib/avatars";
 import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../lib/canvas";
 import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../lib/canvas-meta";
 import { db } from "../lib/db";
@@ -1002,40 +1002,53 @@ const CATEGORY_LABEL: Record<string, string> = {
         font-size: 0.75rem;
       }
 
-      /* --- join form ------------------------------------------------- */
-      .join {
+      /* --- signed out: landing + signed in: session bar ---------------- */
+      .landing {
         display: grid;
         gap: 0.8rem;
         max-width: 320px;
         margin: 3rem auto;
         text-align: center;
       }
-      .avatars {
+      .landing p {
+        margin: 0;
+        opacity: 0.7;
+      }
+      .landing-actions {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
         gap: 0.6rem;
-        justify-items: center;
+        margin-top: 0.6rem;
       }
-      .avatars label {
-        width: 3.4rem;
-        height: 3.4rem;
-        border-radius: 50%;
-        cursor: pointer;
+      .landing-actions a {
+        padding: 0.6rem 1.2rem;
+        border-radius: 999px;
+        border: 1px solid var(--ink);
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .landing-actions a.primary {
+        background: var(--ink);
+        color: var(--bg);
+      }
+      .session-bar {
         display: flex;
+        justify-content: flex-end;
         align-items: center;
-        justify-content: center;
-        background: var(--bg);
-        border: 2px solid transparent;
+        gap: 0.6rem;
+        margin: 0 0 0.5rem;
+        font-size: 0.8rem;
       }
-      .avatars label svg {
-        width: 2.6rem;
-        height: 2.6rem;
+      .session-bar span {
+        opacity: 0.7;
       }
-      .avatars input {
-        display: none;
-      }
-      .avatars input:checked + label {
-        border-color: var(--ink);
+      .session-bar button {
+        padding: 0.2rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
       }
 
       /* --- who's here -------------------------------------------------- */
@@ -1080,23 +1093,20 @@ const CATEGORY_LABEL: Record<string, string> = {
     <main>
       {
         !person ? (
-          <form class="join" method="post" action="/api/join">
-            <h1>pick a name and a mate</h1>
-            <input name="name" placeholder="your name" maxlength="40" required autofocus />
-            <div class="avatars">
-              {AVATARS.map((a, i) => (
-                <>
-                  <input type="radio" name="avatar" id={`a${i}`} value={a.id} checked={i === 0} />
-                  <label for={`a${i}`} title={a.name}>
-                    <svg viewBox="0 0 64 64" aria-hidden="true" set:html={a.svg} />
-                  </label>
-                </>
-              ))}
+          <section class="landing">
+            <h1>the board</h1>
+            <p>A little shared space for the group. Log in, or make an account if you're new.</p>
+            <div class="landing-actions">
+              <a class="primary" href="/signup">sign up</a>
+              <a href="/login">log in</a>
             </div>
-            <button type="submit">join the board</button>
-          </form>
+          </section>
         ) : (
           <>
+            <form class="session-bar" method="post" action="/api/logout">
+              <span>{person.name}</span>
+              <button type="submit">log out</button>
+            </form>
             <div class="presence" id="presence" aria-live="polite">
               {initialPresence.length === 0 ? (
                 <span class="presence-empty">no one else here right now</span>

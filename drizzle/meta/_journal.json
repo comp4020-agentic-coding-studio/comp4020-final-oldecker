@@ -36,6 +36,13 @@
       "when": 1792453295068,
       "tag": "0004_flashy_shriek",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792543472175,
+      "tag": "0005_spotty_wallop",
+      "breakpoints": true
     }
   ]
 }

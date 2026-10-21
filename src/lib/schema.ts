@@ -3,21 +3,57 @@
 // who's watered it. Pruning (old waterings) is still unbuilt --- see
 // waterings' own comment, and auditLog's below, for why that's fine so far.
 import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-// Lightweight identity: a name + an avatar, no password. Good enough for a
-// closed group of ~15 people behind a shared link, not a public app. The
-// avatar is a key into src/lib/avatars.ts, not a colour --- it's what shows
-// up in the live presence strip (crit 9's multi-user decision), so it has
-// to be more legible at a glance than a colour swatch was.
-export const people = sqliteTable("people", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  avatar: text("avatar").notNull(),
-  createdAt: integer("created_at")
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+// Identity: a name + a password + an avatar. The avatar is a key into
+// src/lib/avatars.ts, not a colour --- it's what shows up in the live
+// presence strip (crit 9's multi-user decision), so it has to be more
+// legible at a glance than a colour swatch was.
+//
+// passwordHash and nameKey are both NULL for "legacy" rows: people who joined
+// back when identity was just a name and a cookie. Those rows are kept ---
+// posts, scores and photos reference them and must keep rendering --- but with
+// no password they can never log in, so they are display-only authors now.
+// nameKey is the lower-cased, whitespace-normalised name, and is what's
+// unique (case-insensitively) among real accounts: SQLite can't add a UNIQUE
+// constraint with ALTER TABLE, but a unique index over a nullable column
+// does the same job here, and treats every NULL as distinct --- so legacy
+// duplicate names ("Ole" twice) can't break the migration, and a new
+// account may still reuse a legacy display name (audit lines carry the id
+// prefix, so they stay distinguishable).
+export const people = sqliteTable(
+  "people",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    avatar: text("avatar").notNull(),
+    passwordHash: text("password_hash"),
+    nameKey: text("name_key"),
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [uniqueIndex("people_name_key_unique").on(table.nameKey)],
+);
+
+// One row per logged-in browser. `id` is the SHA-256 of the random token in
+// the cookie, never the token itself, so a leaked database (or backup) can't
+// be replayed as logins. Rooms (a later phase) would hang off people, not
+// sessions, so nothing here needs to change for them.
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id),
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (table) => [index("sessions_person_idx").on(table.personId)],
+);
 
 export const posts = sqliteTable("posts", {
   id: integer("id").primaryKey({ autoIncrement: true }),

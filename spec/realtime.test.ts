@@ -1,4 +1,5 @@
 import { expect, inject, it } from "vitest";
+import { signup, uniqueName } from "./auth-helpers";
 
 // This week's own spec line: "a change one person makes appears in every
 // other open session within about a second, with no reload." Two separate
@@ -7,17 +8,7 @@ import { expect, inject, it } from "vitest";
 const baseUrl = inject("baseUrl");
 
 async function join(name: string, avatar: string): Promise<string> {
-  const origin = new URL(baseUrl).origin;
-  const res = await fetch(new URL("/api/join", baseUrl), {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", origin },
-    body: new URLSearchParams({ name, avatar }),
-    redirect: "manual",
-  });
-  expect(res.status, "joining should redirect back to the board").toBe(303);
-  const setCookie = res.headers.get("set-cookie");
-  expect(setCookie, "joining did not set an identity cookie").toBeTruthy();
-  return setCookie!.split(";")[0];
+  return signup(baseUrl, uniqueName(name), avatar);
 }
 
 // Reads Server-Sent Events off a fetch body stream until `want` returns

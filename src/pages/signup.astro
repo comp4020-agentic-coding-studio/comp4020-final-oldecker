@@ -1,0 +1,62 @@
+---
+import AvatarPicker from "../components/AvatarPicker.astro";
+import AuthLayout from "../layouts/AuthLayout.astro";
+import { currentPerson, MAX_NAME_LENGTH, MIN_NAME_LENGTH, MIN_PASSWORD_LENGTH } from "../lib/identity";
+
+export const prerender = false;
+
+if (currentPerson(Astro.cookies)) return Astro.redirect("/");
+
+const errorCode = Astro.url.searchParams.get("error");
+const name = Astro.url.searchParams.get("name") ?? "";
+const avatar = Astro.url.searchParams.get("avatar") ?? undefined;
+
+const messages: Record<string, string> = {
+  "name-taken": "Someone already has that name. Pick another, or log in if it's you.",
+  "name-invalid": `Names need ${MIN_NAME_LENGTH} to ${MAX_NAME_LENGTH} characters, with nothing unprintable.`,
+  "password-invalid": `Passwords need at least ${MIN_PASSWORD_LENGTH} characters.`,
+  "password-mismatch": "Those two passwords don't match.",
+  "avatar-invalid": "Pick one of the mates below.",
+};
+const error = errorCode ? (messages[errorCode] ?? null) : null;
+---
+
+<AuthLayout title="sign up">
+  <h1>join the board</h1>
+  <p class="lede">Make an account with a name and a password. You can log in from any device.</p>
+
+  <form class="auth" method="post" action="/api/signup">
+    {error && <p class="error" role="alert">{error}</p>}
+    <label class="field">
+      <span>name</span>
+      <input
+        type="text"
+        name="name"
+        value={name}
+        minlength={MIN_NAME_LENGTH}
+        maxlength={MAX_NAME_LENGTH}
+        autocomplete="username"
+        required
+        autofocus
+      />
+    </label>
+    <label class="field">
+      <span>password</span>
+      <input type="password" name="password" minlength={MIN_PASSWORD_LENGTH} autocomplete="new-password" required />
+    </label>
+    <label class="field">
+      <span>password again</span>
+      <input type="password" name="confirm" minlength={MIN_PASSWORD_LENGTH} autocomplete="new-password" required />
+    </label>
+    <p class="hint">At least {MIN_PASSWORD_LENGTH} characters. There's no email reset yet, so keep it somewhere safe.</p>
+
+    <!-- The avatar part of signup is this one component, submitting one
+         field named `avatar`. Swap it for the face builder here (and in
+         src/lib/signup-avatar.ts, which validates the value). -->
+    <AvatarPicker selected={avatar} />
+
+    <button type="submit">make my account</button>
+  </form>
+
+  <p class="alt">Already have an account? <a href="/login">Log in</a></p>
+</AuthLayout>

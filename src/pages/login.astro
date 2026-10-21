@@ -1,0 +1,44 @@
+---
+import AuthLayout from "../layouts/AuthLayout.astro";
+import { currentPerson } from "../lib/identity";
+
+export const prerender = false;
+
+if (currentPerson(Astro.cookies)) return Astro.redirect("/");
+
+const errorCode = Astro.url.searchParams.get("error");
+const name = Astro.url.searchParams.get("name") ?? "";
+const wait = Number(Astro.url.searchParams.get("wait")) || 10;
+
+// Codes, not free text, come through the URL: the message is chosen here, so
+// nobody can craft a link that puts their own words on our login page.
+const messages: Record<string, string> = {
+  "bad-credentials": "That name and password don't match. Check both and try again.",
+  "rate-limited": `Too many wrong tries. Wait about ${wait} minute${wait === 1 ? "" : "s"} and try again.`,
+};
+const error = errorCode ? (messages[errorCode] ?? null) : null;
+---
+
+<AuthLayout title="log in">
+  <h1>welcome back</h1>
+  <p class="lede">Log in to the board with your name and password.</p>
+
+  <form class="auth" method="post" action="/api/login">
+    {error && <p class="error" role="alert">{error}</p>}
+    <label class="field">
+      <span>name</span>
+      <input type="text" name="name" value={name} maxlength="30" autocomplete="username" required autofocus={!name} />
+    </label>
+    <label class="field">
+      <span>password</span>
+      <input type="password" name="password" autocomplete="current-password" required autofocus={!!name} />
+    </label>
+    <button type="submit">log in</button>
+    <!-- Password reset by email is deferred (no email is collected at
+         signup yet). When it lands, this note becomes a link to the reset
+         flow. -->
+    <p class="hint">Forgot your password? Ask the group admin for now.</p>
+  </form>
+
+  <p class="alt">New here? <a href="/signup">Make an account</a></p>
+</AuthLayout>
