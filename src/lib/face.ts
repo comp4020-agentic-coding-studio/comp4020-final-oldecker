@@ -85,7 +85,7 @@ const HAIR_COLOUR_NAMES = ["black", "dark brown", "brown", "auburn", "ginger", "
 const OUTFITS = ["#2f6f9f", "#c1443b", "#3f7d3f", "#e3b23c", "#7a4bc2", "#2b2b33", "#ece6dc", "#d9619b"];
 const OUTFIT_NAMES = ["blue", "red", "green", "mustard", "purple", "black", "cream", "pink"];
 
-const HAIRSTYLE_NAMES = ["bald", "buzz", "short", "quiff", "long", "curly", "afro", "bun", "mullet"];
+const HAIRSTYLE_NAMES = ["bald", "buzz", "short", "quiff", "long", "curly", "afro", "bun", "mullet", "receding", "thinning", "horseshoe", "shaved"];
 const BROW_NAMES = ["none", "straight", "arched", "thick", "raised"];
 const EYE_NAMES = ["dots", "big", "happy", "sleepy", "wink", "tall"];
 const MOUTH_NAMES = ["smile", "grin", "neutral", "open", "smirk", "tongue", "sad"];
@@ -176,6 +176,7 @@ export function randomFace(rng: () => number = Math.random): FaceConfig {
   // possible but rarer, and a hat doesn't need a hairstyle fight.
   if (face.hc >= 7 && rng() < 0.6) face.hc = pick(7);
   if (face.ex !== 4 && rng() < 0.45) face.ex = 0;
+  if (face.hs >= 9 && rng() < 0.6) face.hs = pick(9); // balding stages: possible but rarer
   if (face.gl > 0 && rng() < 0.4) face.gl = 0;
   if (face.bd > 0 && rng() < 0.5) face.bd = 0;
   return face;
@@ -206,6 +207,8 @@ function hairBack(style: number, c: string): string {
       return `<circle cx="32" cy="26" r="21.5" fill="${c}"/>`;
     case 8: // mullet: the long back. Hidden behind the head above the ears, then flaring out under them and over the shoulders
       return `<path d="M18 28 L18.5 38 C14 40 11.5 46 9.5 55 L16 52.5 L19 58 L25 53 L32 58 L39 53 L45 58 L48 52.5 L54.5 55 C52.5 46 50 40 45.5 38 L46 28Z" fill="${c}"/>`;
+    case 11: // horseshoe: the hair that is left, wrapping round behind the ears
+      return `<path d="M18.2 22.5 C12.6 26 12.4 36.5 16.8 40.6 Q18.2 41.4 19.2 39.6 L19.2 22.5Z M45.8 22.5 C51.4 26 51.6 36.5 47.2 40.6 Q45.8 41.4 44.8 39.6 L44.8 22.5Z" fill="${c}"/>`;
     case 7: // bun
       return `<circle cx="32" cy="9.5" r="6.5" fill="${c}"/>`;
     default:
@@ -213,24 +216,47 @@ function hairBack(style: number, c: string): string {
   }
 }
 
+// Outer edge for a front-hair shape: an arc that follows the head ellipse
+// (centre 32,31, rx 15, ry 17) padded by 0.7, starting/ending at height y0.
+// Hair shapes used to draw their own outer curve, which cut inside the head
+// outline at the top, so a sliver of skin showed above the hair. Using the
+// head's own curve (padded) means the hair always covers the whole crown.
+function headCap(y0: number): string {
+  const rx = 15.7;
+  const ry = 17.7;
+  const t = (y0 - 31) / ry;
+  const dx = rx * Math.sqrt(1 - t * t);
+  return `M${(32 - dx).toFixed(2)} ${y0} A${rx} ${ry} 0 ${y0 > 31 ? 1 : 0} 1 ${(32 + dx).toFixed(2)} ${y0}`;
+}
+
 function hairFront(style: number, c: string): string {
   switch (style) {
     case 1: // buzz
-      return `<path d="M17 30 C15.5 12 48.5 12 47 30 C45.5 23 40 19.5 32 19.5 C24 19.5 18.5 23 17 30Z" fill="${c}"/>`;
+      return `<path d="${headCap(30)} C45.5 23 40 19.5 32 19.5 C24 19.5 18.5 23 17 30Z" fill="${c}"/>`;
     case 2: // short, side-swept fringe
-      return `<path d="M16.5 32 C13.5 9 50.5 9 47.5 32 C46.5 27 44.5 24 41 22.5 C36 25 28.5 24.5 22 21 C19.5 24 17.5 28 16.5 32Z" fill="${c}"/>`;
+      return `<path d="${headCap(32)} C46.5 27 44.5 24 41 22.5 C36 25 28.5 24.5 22 21 C19.5 24 17.5 28 16.5 32Z" fill="${c}"/>`;
     case 3: // quiff
       return `<path d="M16.5 31 C12 8 39 0 48.5 13 C50 19 48.5 25 47.5 31 C46 25 44 22 40 20.5 C34 22.5 26 22.5 22 19 C19 22 17.5 26 16.5 31Z" fill="${c}"/>`;
     case 4: // long: centre part
-      return `<path d="M15.5 34 C12.5 8 51.5 8 48.5 34 C46.5 26 40.5 20 32 17.5 C23.5 20 17.5 26 15.5 34Z" fill="${c}"/>`;
+      return `<path d="${headCap(34)} C46.5 26 40.5 20 32 17.5 C23.5 20 17.5 26 15.5 34Z" fill="${c}"/>`;
     case 5: // curly fringe
-      return [[24, 21.5, 5], [32, 19.5, 5.5], [40, 21.5, 5]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`).join("");
+      // small curls sitting on the head outline so skin never shows between the cloud and the fringe
+      return [[18.5, 26, 3.6], [20.5, 20.5, 4.4], [25.5, 16.5, 4.6], [32, 14.8, 4.8], [38.5, 16.5, 4.6], [43.5, 20.5, 4.4], [45.5, 26, 3.6], [24, 21.5, 5], [32, 19.5, 5.5], [40, 21.5, 5]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`).join("");
     case 6: // afro hairline
-      return `<path d="M16.5 29 C16.5 17 47.5 17 47.5 29 C45 23.5 40 21 32 21 C24 21 19 23.5 16.5 29Z" fill="${c}"/>`;
+      return `<path d="${headCap(29)} C45 23.5 40 21 32 21 C24 21 19 23.5 16.5 29Z" fill="${c}"/>`;
     case 7: // bun: centre-parted cap
-      return `<path d="M16.5 32 C14.5 11 49.5 11 47.5 32 C46 25 40.5 20.5 32 18.5 C23.5 20.5 18 25 16.5 32Z" fill="${c}"/>`;
+      return `<path d="${headCap(32)} C46 25 40.5 20.5 32 18.5 C23.5 20.5 18 25 16.5 32Z" fill="${c}"/>`;
     case 8: // mullet: short, choppy top and fringe; ears stay clear
-      return `<path d="M16.5 31 C13.5 9 50.5 9 47.5 31 C46.5 26 44.5 23 41 21.5 C38 23.5 34 22.5 32 20.5 C29.5 23 24 23.5 21.5 21 C19.5 23.5 17.5 27 16.5 31Z" fill="${c}"/>`;
+      return `<path d="${headCap(31)} C46.5 26 44.5 23 41 21.5 C38 23.5 34 22.5 32 20.5 C29.5 23 24 23.5 21.5 21 C19.5 23.5 17.5 27 16.5 31Z" fill="${c}"/>`;
+    // --- balding stages (appended after the mullet: never reorder) ---
+    case 9: // receding: M-shaped hairline, temples pulled back, widow's peak
+      return `<path d="${headCap(32)} C46.6 27.5 45 23.5 42.5 19.8 Q38.5 18 36.2 20 Q32 24.8 27.8 20 Q25.5 18 21.5 19.8 C19 23.5 17.4 27.5 16.3 32Z" fill="${c}"/>`;
+    case 10: // thinning crown: hair kept round the front and sides, bald patch on top (the hole shows the head)
+      return `<path fill-rule="evenodd" d="${headCap(32)} C46.5 27.5 44.5 25 41 24 C36 25.6 28.5 25.6 23 24 C19.5 25 17.5 28 16.5 32Z M23.8 21.6 C22.8 15.4 41.2 15.4 40.2 21.6 C38.6 23.4 25.4 23.4 23.8 21.6Z" fill="${c}"/>`;
+    case 11: // horseshoe: bald on top, a band of hair above each ear (the rest is the back layer)
+      return `<path d="M18.4 22.2 C15.2 25.4 14.8 29.2 15.8 31.4 L18.4 30.6 C18 27.6 18.9 25 20.2 23.4Z M45.6 22.2 C48.8 25.4 49.2 29.2 48.2 31.4 L45.6 30.6 C46 27.6 45.1 25 43.8 23.4Z" fill="${c}"/>`;
+    case 12: // shaved: a head shaved close, just the shadow of hair where it grew (same trick as stubble, kept inside the head outline)
+      return `<path d="M17.02 30 A15 17 0 0 1 46.98 30 C45.5 23 40 19.5 32 19.5 C24 19.5 18.5 23 17.02 30Z" fill="${c}" opacity="0.3"/>`;
     default:
       return "";
   }

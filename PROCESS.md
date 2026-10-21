@@ -508,6 +508,13 @@ choice. Flat and Bitmoji-ish rather than realistic --- skin, hair colour,
 hairstyle, eyebrows, eyes, mouth, facial hair, glasses, extras (beanie, cap,
 headband, earrings, flower, headphones, party hat), outfit and backdrop colour.
 
+**Hair gap and balding stages.** A user spotted skin showing above the hair. The front-hair
+shapes drew their own outer curve, which peaked lower than the head ellipse (top y=14), so
+buzz, short, long, curly, bun and mullet all let a sliver through. They now start their outline
+with an arc padded 0.7 outside the head (`headCap`), and I checked it numerically by sampling the
+head outline against the hair fills. Four balding stages were appended as hairstyles 9-12
+(receding, thinning, horseshoe, shaved). Appended, never inserted, because faces are stored as indices.
+
 **Storage, and why there is no migration.** A face is eleven small integers,
 each an index into an option list in `src/lib/face.ts`, stored as compact JSON
 in the existing `people.avatar` text column. Another change this round owns
