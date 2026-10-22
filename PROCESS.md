@@ -1086,3 +1086,76 @@ hot vote only, neutral, three cold, four medium hot): glow came out 1, 1,
 0.17, none, 0.5 and 0.33, in light and dark at 1920 and 390 wide with no
 horizontal scroll, and a vote that tipped a post redrew its glow to match a
 reload.
+
+## The bedroom now only shows who's actually asleep
+
+When the bedroom shipped, every member got a bunk, online or not --- awake
+members sat up with a warm ring, asleep ones were dimmed with a little "zz".
+The end user's feedback was direct: that's redundant. Anyone awake is already
+standing in the corridor a few inches above the bedroom on the same page, so
+drawing them a second time in a bed just repeats information the corridor
+already gave, and makes you scan two rooms to answer one question ("who's
+actually here"). The bedroom's only reason to exist is to answer the question
+the corridor *can't*: who lives here that you can't currently see anywhere
+else. So awake members are now left out of the bedroom entirely, not styled
+differently --- they simply don't get a bunk.
+
+**What changed, and where.** `bedroomHtml()` and `bedroomCount()` in
+`src/lib/bedroom.ts` now filter `members` down to `sleeping = members.filter(m
+=> !awake.has(m.personId))` before laying out a single bed, where `awake` is
+the same per-house presence set (`presenceSnapshot()`/`awakeIds`) the corridor
+already reads, plus your own id (you're always awake, since you're the one
+looking at the page). Two sleepers per bed, bottom bunk first, in move-in
+order, exactly as before --- that part of the bedroom's contract didn't
+change, it just now runs over a shorter list. Every bunk this file draws is
+therefore always `data-state="asleep"`: there's no "awake" bunk left to
+render, so the whole `[data-state="awake"]` block and the `[data-own]`
+ring override in `src/styles/bedroom.css` came out as dead code, along with
+the `--bed-awake`/`--bed-awake-glow` tokens in `src/styles/tokens.css` that
+only that block used. If every member is online, there's nothing left to put
+in a bed at all --- an empty row of bedding, or a blank space where the room
+used to be, would read as broken, not as good news --- so `bedroomHtml()`
+returns a small `everyone's awake! no one to see here right now.` message
+instead, and `bedroomCount()` says `everyone's awake` rather than `0 of 4
+asleep`. The house page's hint text under the heading changed to match:
+"everyone who lives here but isn't around right now," not "awake or asleep."
+
+**Live, both directions, off the event the bedroom already listened to.** No
+new event was needed. The bedroom already redrew itself on every per-house
+`presence` broadcast (`src/scripts/bedroom-dom.ts`'s `applyBedroomPresence()`,
+wired in `live.ts`) --- it just used to redraw *styling* on that event, and
+now it redraws *membership*. Someone closing their last tab fires
+`markAbsent()` → a fresh `presence` snapshot → every open tab's
+`applyBedroomPresence()` rebuilds the bunks with `bedroomHtml()`, and that
+person is no longer in `awake`, so they now get a bed they didn't have a
+second ago. Someone opening the house fires the mirror image: `markPresent()`
+→ `presence` → they drop out of the filtered list and their bed disappears,
+with the room falling back to the empty state if they were the last one
+sleeping. The same snapshot-on-reconnect behaviour crit 9 built in
+(`send({ type: "presence", ... })` the instant a stream opens, rather than
+diffing) means a dropped connection that reconnects always ends up correct,
+not just eventually consistent.
+
+**How it was verified.** `pnpm typecheck` (0 errors, 0 warnings) and `pnpm
+build` clean. `spec/lieb.test.ts`'s bedroom test was rewritten
+(`"the bedroom shows only members who are offline, not the ones already in
+the corridor"`) to open a 4-person house, put one member's SSE stream up
+alongside the viewer's, and check that both online members are absent from
+the bedroom HTML entirely (no name, no `data-own="true"`) while the two
+offline members get one shared bed between them, both asleep, with the
+heading reading "2 of 4 asleep"; a second new test
+(`"the bedroom shows a friendly empty state when everyone is awake"`) checks
+a 2-person house with both streams open renders no `.bunk-bed` at all and the
+`everyone's awake` text instead. The full suite passed twice in a row against
+the built server on a scratch SQLite database on a throwaway port. Then, since
+the real risk here is the live half (not just what a fresh render looks like),
+a disposable Playwright script (not committed) opened two browser contexts ---
+different cookie jars, A and B, both members of a fresh house --- and drove
+the actual sequence end to end: with both contexts' pages open, A's bedroom
+showed the empty-state message and no trace of B; B's browser tab (and its
+SSE connection) was then closed outright, and *without reloading A's page* A's
+bedroom grew a bed for B, asleep, within the wait window; B then reopened the
+house in a new context, and again *without reloading A's page* B's bed
+vanished and A's bedroom fell back to the empty state. All three transitions
+matched what the HTML-only checks above predicted, confirming the DOM
+re-render (not just the SSE payload) behaves correctly in a real browser.

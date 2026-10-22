@@ -7,7 +7,10 @@ import { openStream, pause } from "./sse";
 // in, never to yourself, and once per sender -> recipient per day (enforced
 // on the server). It's private: it goes live to the recipient's own streams
 // only, and if they're away it waits until they next open the house, then
-// counts as seen. The bedroom lists every member, online or not.
+// counts as seen. The bedroom lists only members who are currently offline
+// --- anyone online is already shown in the corridor, so the bedroom would
+// just be showing them twice --- and shows a friendly empty state when
+// nobody's offline.
 const baseUrl = inject("baseUrl");
 
 const housePage = async (slug: string, cookie: string) =>
@@ -184,7 +187,7 @@ it("an unconfirmed live heart is still waiting on the next visit", async () => {
   expect(inboxOf(await housePage(slug, b))).toHaveLength(1);
 });
 
-it("the bedroom shows every member, awake or asleep", async () => {
+it("the bedroom shows only members who are offline, not the ones already in the corridor", async () => {
   const { slug, names, cookies } = await household(4);
   const [a, b] = cookies;
   const bStream = await openStream(baseUrl, b, slug);
@@ -193,15 +196,37 @@ it("the bedroom shows every member, awake or asleep", async () => {
     const html = await housePage(slug, a);
     const beds = html.match(/id="bedroom-beds"[\s\S]*?<script type="application\/json" id="bedroom-data"/)?.[0] ?? "";
     expect(beds).toBeTruthy();
-    // everyone has a bunk (your own is labelled "you")
-    for (const name of names.slice(1)) expect(beds).toContain(name);
-    expect(beds).toMatch(/data-own="true"/);
-    // two to a bunk bed
-    expect(beds.match(/class="bunk-bed"/g)).toHaveLength(2);
+    // A (viewing) and B (bStream open) are both online, so neither gets a
+    // bunk --- the bedroom is only for the ones NOT already visible in the
+    // corridor.
+    expect(beds).not.toContain(names[0]);
+    expect(beds).not.toContain(names[1]);
+    expect(beds).not.toMatch(/data-own="true"/);
+    // C and D are offline, so they both get a bunk, asleep, one bed between
+    // the two of them.
+    expect(beds).toContain(names[2]);
+    expect(beds).toContain(names[3]);
+    expect(beds.match(/class="bunk-bed"/g)).toHaveLength(1);
     const stateOf = (name: string) => beds.match(new RegExp(`data-name="${name}" data-state="(\\w+)"`))?.[1];
-    expect(stateOf(names[1]), "B has the house open").toBe("awake");
-    expect(stateOf(names[2]), "C doesn't").toBe("asleep");
-    expect(html).toContain("2 of 4 awake");
+    expect(stateOf(names[2])).toBe("asleep");
+    expect(stateOf(names[3])).toBe("asleep");
+    expect(html).toContain("2 of 4 asleep");
+  } finally {
+    bStream.close();
+  }
+});
+
+it("the bedroom shows a friendly empty state when everyone is awake", async () => {
+  const { slug, cookies } = await household(2);
+  const [a, b] = cookies;
+  const bStream = await openStream(baseUrl, b, slug);
+  try {
+    await pause(150);
+    const html = await housePage(slug, a);
+    const beds = html.match(/id="bedroom-beds"[\s\S]*?<script type="application\/json" id="bedroom-data"/)?.[0] ?? "";
+    expect(beds).not.toContain("bunk-bed");
+    expect(beds).toContain("everyone's awake");
+    expect(html).toContain("everyone's awake");
   } finally {
     bStream.close();
   }

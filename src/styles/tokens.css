@@ -111,9 +111,9 @@
   --knock-mat-dark: #a8823f;
   /* the bedroom: a dusky lavender room with a night window, wooden bunks
      and four blanket colours the beds cycle through. Decorative paint; the
-     name tags sit on --card with --ink like everywhere else. --bed-awake is
-     the warm ring round an awake sleeper's head (3:1+ on --card, since it's
-     the one thing that carries "here right now"); --bed-z is the snore. */
+     name tags sit on --card with --ink like everywhere else. Every bunk
+     shown here is someone offline (awake members don't get one), so there's
+     no "awake" ring colour to carry; --bed-z is the snore. */
   --bed-wall: #ebe7f5;
   --bed-wall-dot: #ddd7ee;
   --bed-skirting: #b9a6cf;
@@ -131,8 +131,6 @@
   --bed-night: #33407a;
   --bed-moon: #f7e7a6;
   --bed-star: #fff6d6;
-  --bed-awake: #c47f12;
-  --bed-awake-glow: #f2c14e55;
   --bed-z: #6c63a8;
   /* ich hab dich lieb */
   --lieb: #e0485f;
@@ -262,8 +260,6 @@
     --bed-night: #0f1330;
     --bed-moon: #e8e2c8;
     --bed-star: #e8e2c8;
-    --bed-awake: #e8a33d;
-    --bed-awake-glow: #e8a33d4d;
     --bed-z: #a9b1d6;
     --lieb: #f07088;
     --lieb-soft: #3d2838;
