@@ -58,7 +58,27 @@ export type LiveEvent =
   // row change live for everyone with the house open (and their own tab
   // uses it for the progress bar and the level-up toast). Sent by
   // logAction() --- see src/lib/audit.ts.
-  | { type: "level"; data: { personId: string; level: number; points: number } };
+  | { type: "level"; data: { personId: string; level: number; points: number } }
+  // A vote to wipe the wall: a ballot cast, or the vote closing (quick pass,
+  // or the 3-day window). Carries the tally so every open tab's panel
+  // updates without asking --- see src/lib/wallvote.ts.
+  | { type: "wall_vote_update"; data: WallVotePublicEvent }
+  // A fresh (or re-)connection's view of the vote panel --- same reasoning as
+  // party_snapshot/knock_snapshot: don't make a reconnecting tab wait on the
+  // next ballot to find out a vote is already underway.
+  | { type: "wall_vote_snapshot"; data: WallVotePublicEvent | { status: "none" } }
+  // The wall was actually cleared (a vote passed). The old state is already
+  // safe in the gallery by the time this fires --- see wipeWall().
+  | { type: "wall_wiped"; data: Record<string, never> };
+
+export interface WallVotePublicEvent {
+  id: number;
+  status: "open" | "passed" | "failed";
+  yes: number;
+  no: number;
+  resolvesAt: number;
+  memberCount: number;
+}
 
 export interface KnockEntry {
   id: number;
