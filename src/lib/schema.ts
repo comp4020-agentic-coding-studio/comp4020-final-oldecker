@@ -351,3 +351,73 @@ export const liebMessages = sqliteTable(
     index("lieb_inbox_idx").on(table.houseId, table.toPersonId, table.seenAt),
   ],
 );
+
+// A vote to wipe a house's pixel wall (src/lib/wallvote.ts). At most one OPEN
+// vote per house at a time --- the partial unique index below is the real
+// guard, same shape as house_knocks_one_pending: starting a vote while one's
+// already open just finds this same row, so there's only ever one to cast a
+// ballot in. Resolved rows (status 'passed'/'failed') are kept, not deleted,
+// as a small history of past votes. resolvesAt is the 3-day-window deadline,
+// set once at creation; resolvedAt is when it actually closed, whichever way.
+export const wallVotes = sqliteTable(
+  "wall_votes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    houseId: integer("house_id")
+      .notNull()
+      .references(() => houses.id),
+    status: text("status").notNull().default("open"), // 'open' | 'passed' | 'failed'
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+    resolvesAt: integer("resolves_at").notNull(),
+    resolvedAt: integer("resolved_at"),
+  },
+  (table) => [
+    uniqueIndex("wall_votes_one_open").on(table.houseId).where(sql`${table.status} = 'open'`),
+    index("wall_votes_house_idx").on(table.houseId, table.createdAt),
+  ],
+);
+
+// One ballot per person per vote --- (voteId, personId) IS the key, so
+// changing your mind while the poll is open is a plain upsert, same shape as
+// party_guests re-joining.
+export const wallVoteBallots = sqliteTable(
+  "wall_vote_ballots",
+  {
+    voteId: integer("vote_id")
+      .notNull()
+      .references(() => wallVotes.id),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id),
+    choice: text("choice").notNull(), // 'yes' | 'no'
+    votedAt: integer("voted_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [primaryKey({ columns: [table.voteId, table.personId] })],
+);
+
+// A house's wall, snapshotted the moment a wipe-vote passes, so wiping the
+// wall never throws anything away --- it only ever moves it from "live" to
+// "past walls" (src/lib/wallvote.ts). `pixels` is a compact JSON array of
+// painted cells, the same shape the live canvas holds. Swept ~6 months after
+// being wiped, same derive-at-read idiom as the 60-day post expiry --- this
+// table is the ONLY place a wipe ever writes; it never touches posts, photos
+// or anything else.
+export const wallGallery = sqliteTable(
+  "wall_gallery",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    houseId: integer("house_id")
+      .notNull()
+      .references(() => houses.id),
+    name: text("name").notNull(),
+    pixels: text("pixels").notNull(),
+    wipedAt: integer("wiped_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("wall_gallery_house_idx").on(table.houseId, table.wipedAt)],
+);

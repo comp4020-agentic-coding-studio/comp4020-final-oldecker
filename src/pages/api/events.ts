@@ -20,6 +20,7 @@ import {
 import { houseAccess } from "../../lib/houses";
 import { pendingKnocks } from "../../lib/knocks";
 import { partyRoomSnapshot } from "../../lib/party";
+import { wallVoteState } from "../../lib/wallvote";
 
 export const prerender = false;
 
@@ -63,6 +64,11 @@ export const GET: APIRoute = ({ cookies, url }) => {
       // ...and who's at the front door, so a reconnect after a dropped
       // connection doesn't leave a knock showing that's since been answered.
       send({ type: "knock_snapshot", data: { knocks: pendingKnocks(house.id) } });
+      // ...and the wipe-the-wall vote, if one's open, same self-healing-on-
+      // reconnect reasoning: a vote resolved while this tab was disconnected
+      // shouldn't keep showing as open.
+      const vote = wallVoteState(house.id, person.id);
+      send({ type: "wall_vote_snapshot", data: vote ?? { status: "none" } });
 
       heartbeat = setInterval(() => controller.enqueue(encoder.encode(": keep-alive\n\n")), HEARTBEAT_MS);
     },

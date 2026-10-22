@@ -21,6 +21,7 @@ import {
 } from "./party-dom";
 import { receiveLieb, type LiebItem } from "./lieb";
 import { applyPlantHealth, applyPlantName } from "./plant-dom";
+import { applyWallVoteState, applyWallWiped, renderNone, type WallVoteState } from "./wall-vote-dom";
 import { pourIntoPlant } from "./water-pour";
 
 interface WateredEvent {
@@ -96,6 +97,28 @@ source.addEventListener("level", (e) => {
 
 source.addEventListener("party_snapshot", (e) => {
   renderPartyRoom((JSON.parse((e as MessageEvent).data) as { guests: PartyGuest[] }).guests, ownPersonId);
+});
+
+// A ballot landed (yours from another tab, or anyone else's), or the vote
+// resolved --- never carries YOUR OWN current choice (only your own cast's
+// response knows that), so wall-vote.ts is the only caller that passes one.
+source.addEventListener("wall_vote_update", (e) => {
+  applyWallVoteState(JSON.parse((e as MessageEvent).data) as WallVoteState);
+});
+
+// A fresh (or re-)connection's view of the vote: open with its tally, or
+// nothing open at all --- same self-healing-on-reconnect shape as
+// party_snapshot/knock_snapshot above.
+source.addEventListener("wall_vote_snapshot", (e) => {
+  const state = JSON.parse((e as MessageEvent).data) as WallVoteState;
+  if (state.status === "open") applyWallVoteState(state);
+  else renderNone();
+});
+
+// The wall was actually cleared: every cell goes back to white for everyone
+// watching, live --- the old state is already safe in the gallery.
+source.addEventListener("wall_wiped", () => {
+  applyWallWiped();
 });
 
 // A dropped connection (a laptop sleeping, a flaky network) shouldn't need

@@ -1086,3 +1086,122 @@ hot vote only, neutral, three cold, four medium hot): glow came out 1, 1,
 0.17, none, 0.5 and 0.33, in light and dark at 1920 and 390 wide with no
 horizontal scroll, and a vote that tipped a post redrew its glow to match a
 reload.
+
+## Vote to wipe the wall, and a past-walls gallery
+
+A new request, settled with Ole before building rather than guessed at: any
+house member can start or join a vote to clear their house's pixel wall, and
+the old wall is never actually thrown away.
+
+**Why two different pass thresholds, not one.** Strictly more than half the
+house voting yes passes it immediately --- if a clear majority of the people
+who live here right now want a fresh wall, there's nothing left to wait for.
+Otherwise it stays open for 3 days, and on that deadline it passes only if
+yes beats no *and* at least 2 people voted yes. That second bar is the real
+reason it isn't just "yes > no": without it, one person voting yes and
+nobody else answering would pass a vote by nobody actually deciding anything
+--- a wall wiped by default isn't a wall wiped by the house. Two still isn't
+a lot for a group of ~15, but it's the smallest number that distinguishes
+"somebody decided this" from "exactly one person clicked a button and
+everyone else was asleep." Both thresholds are checked against the house's
+*current* member count every time a ballot lands, not a count frozen when
+the vote opened --- someone joining mid-vote genuinely changes what "more
+than half" means, the same way `logAction`'s level recompute always reads
+live state rather than a cached one.
+
+**Why a snapshot gallery, not a hard delete.** This app's one rule that never
+bends is that a person's own posts and photos don't disappear without them
+asking (`deletePostRecord` is the only thing that ever removes a post, and
+only the author or the 60-day sweep call it). A wiped wall is different in
+kind --- it's communal pixel art, not anyone's post --- but "the house voted
+to clear it" and "it's gone forever, no take-backs" don't have to be the same
+decision, and there's no reason to make them one when keeping the old state
+costs one row in a new table. `wipeWall()` in `src/lib/wallvote.ts` reads
+every painted cell, writes them as one JSON blob into `wall_gallery` together
+with the wall's name at the time, and only then clears `pixels` --- both in
+one transaction, so a crash mid-wipe can't leave the snapshot taken but the
+live wall un-cleared, or the reverse. `wallvote.ts` never imports `posts`,
+`postImages`, or anything from `src/lib/uploads.ts`; the only tables it
+touches are `wall_votes`, `wall_vote_ballots`, `pixels`, and `wall_gallery`.
+A "past walls" page per house (`/h/<slug>/walls`, behind the same membership
+check as the house page itself) shows every snapshot, most recent first,
+labelled with when it was wiped. Gallery rows are swept at read time after
+about 6 months, the same `sweepExpiredPosts()`-shaped idiom this app already
+uses for posts: no calendar precision needed at this scale, just a `lt()`
+comparison against a fixed number of seconds, called once per house-page
+load and once from the gallery page itself.
+
+**No cron, the same way the party room avoids one.** A vote's 3-day
+resolution is architecturally identical to the party room's 2-hour expiry
+(`src/lib/party.ts`): a `setTimeout` armed at creation time for the common
+case, plus a read-time sweep (`sweepWallVotes()`, called from the house page
+next to `sweepExpiredPosts()`/`sweepExpiredPartyGuests()`) as the restart-safe
+fallback, since `fly.toml` scales this app's one machine to zero between
+visits and a scale-to-zero restart forgets every in-memory timer. The
+difference worth naming: the party room's timer usually *is* how an expiry
+actually fires, because two hours is well within how long someone might leave
+a tab open. Three days is not --- on a 15-person group's realistic usage, the
+sweep is what resolves most votes in practice, and the timer is closer to a
+nicety for the case where the app genuinely stays warm that long. Both paths
+end up calling the exact one `resolveVote()` function, which closes the vote
+with a `WHERE status = 'open'` guard, so whichever path gets there first wins
+and the other is a silent no-op --- no double wipe, no double audit line, no
+double broadcast, the same shape `party.ts`'s `expireIfDue()` uses to survive
+racing its own sweep.
+
+**Only one vote per house at a time** is enforced the same way "only one
+pending knock per person per house" is in `house_knocks`: a partial unique
+index, `wall_votes_one_open` on `(house_id) WHERE status = 'open'`, not an
+application-level check that a second request could race past. Starting a
+vote while one's already open is `INSERT ... ON CONFLICT DO NOTHING` followed
+by a lookup of the existing row on conflict --- the same insert-and-fall-back
+shape `knock()` in `src/lib/knocks.ts` uses for its own partial index, chosen
+for the same reason: two people clicking "yes" within the same millisecond
+can't both insert a second open vote, because SQLite itself refuses the
+second row. Casting a ballot is a plain upsert on `(vote_id, person_id)`, so
+changing your mind while a vote is open is the same write as voting for the
+first time, no special "already voted" branch to get wrong.
+
+**UI.** A small always-visible panel sits under the wall's own controls on
+the house page: the tally, time remaining, and yes/no buttons. There's no
+separate "start a vote" button --- voting yes or no *is* how a vote starts if
+none is open, so the panel never asks you to take an extra step before you
+can actually say what you think. It's dashed and muted when nothing's open,
+switching to the app's existing `--danger`/`--danger-bg` tokens once a vote
+is live, so a wall genuinely at risk of being cleared reads as more
+consequential than an idle invitation. Every update --- a ballot landing from
+any tab, the vote resolving, the wall actually clearing --- goes out over the
+house's existing SSE channel (three new event types in `src/lib/events.ts`:
+`wall_vote_update`, `wall_vote_snapshot`, `wall_wiped`), the same channel the
+plant and the pixels themselves already use, with a snapshot sent on
+`/api/events` connect so a tab that reconnects after a vote resolved doesn't
+keep showing it as open.
+
+**Logging.** Passing, failing, and a gallery sweep all go through the
+existing `logAction` call, same as every other mutation in this app, so
+`flyctl logs` shows `wall_vote_cast` (with who, and which way), then whichever
+of `wall_vote_pass`/`wall_vote_fail` actually closed it (person `null`,
+since resolving a vote --- whether by the quick-pass path or the 3-day
+sweep --- is the vote resolving, not any one person acting), and eventually
+`wall_gallery_sweep` when an old snapshot ages out.
+
+**How it was verified:** `pnpm typecheck` clean (0 errors, 0 warnings,
+matching the pre-existing baseline hint); `pnpm build`; the built server
+against a scratch SQLite database on an unused port, with the full spec
+(including a new `spec/wallvote.test.ts`: quick pass on a strict majority
+including the single-member case, exactly-half not quick-passing, changing a
+ballot replacing rather than adding one, a bad choice value and a non-member
+both rejected, a passing vote wiping the live wall while leaving an unrelated
+post untouched and saving the old pixels into the gallery, only one vote ever
+open per house, a vote in one house never touching another's panel or tally,
+the open-vote and wipe events reaching the house's members live and nobody
+else's, a reconnecting stream getting the open vote's snapshot rather than a
+stale "none," and the gallery listing wipes most-recent-first) green twice in
+a row. Outside the spec, a disposable Node script exercised the parts that
+depend on real clock drift rather than a fresh request: backdating a vote's
+`resolves_at` directly in the scratch database and reloading the house page
+(which runs `sweepWallVotes()`) confirmed a lone yes vote fails on the
+turnout guard once its window has passed, while yes-beats-no with 2+ yes
+votes passes the same way; a live SSE stream across two ballots and a quick
+pass showed `wall_vote_update` firing after each ballot and `wall_wiped`
+firing exactly once, immediately before the vote's own `passed` update.

@@ -1,0 +1,143 @@
+---
+// A house's "past walls" gallery: every pixel-canvas snapshot taken when a
+// wipe-the-wall vote passed (src/lib/wallvote.ts), most recent first. Same
+// membership gate as the house page itself --- a non-member gets the same
+// door treatment, never a peek at a wall they can't see live.
+import "../../../styles/tokens.css";
+import { CANVAS_SIZE, PALETTE } from "../../../lib/canvas";
+import { houseBySlug, isMember } from "../../../lib/houses";
+import { currentPerson } from "../../../lib/identity";
+import { galleryFor, sweepWallGallery } from "../../../lib/wallvote";
+
+export const prerender = false;
+
+const slug = Astro.params.slug ?? "";
+const here = `/h/${encodeURIComponent(slug)}/walls`;
+
+const person = currentPerson(Astro.cookies);
+if (!person) return Astro.redirect(`/login?${new URLSearchParams({ next: here })}`);
+
+const house = houseBySlug(slug);
+if (!house || !isMember(house.id, person.id)) {
+  return Astro.rewrite(`/door?${new URLSearchParams({ house: slug, missing: house ? "" : "1" })}`);
+}
+
+// Derived fresh on every render, same "no cron" shape as every other sweep
+// in this app --- the common case (nothing's 6 months old yet) is one cheap,
+// empty-result SELECT.
+sweepWallGallery();
+const gallery = galleryFor(house.id);
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>past walls · {house.name} · the board</title>
+    <style>
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 4rem;
+      }
+      .walls-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        margin-bottom: 1.2rem;
+      }
+      .walls-bar h1 {
+        margin: 0;
+        font-size: 1.3rem;
+      }
+      .back-link {
+        color: inherit;
+        opacity: 0.7;
+        text-decoration: none;
+        font-size: 0.85rem;
+      }
+      .back-link:hover {
+        opacity: 1;
+        text-decoration: underline;
+      }
+      .walls-hint {
+        margin: 0 0 1.4rem;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+      .walls-empty {
+        padding: 2rem 1rem;
+        text-align: center;
+        border: 1px dashed var(--border);
+        border-radius: 1rem;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+      }
+      .walls-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+        gap: 1rem;
+      }
+      .wall-card {
+        padding: 0.8rem;
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        background: var(--card);
+      }
+      .wall-card svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        shape-rendering: crispEdges;
+        background: #ffffff;
+      }
+      .wall-card-name {
+        margin: 0.6rem 0 0.1rem;
+        font-weight: 600;
+        font-size: 0.9rem;
+      }
+      .wall-card-when {
+        margin: 0;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+      }
+    </style>
+  </head>
+  <body data-house={house.slug}>
+    <main>
+      <div class="walls-bar">
+        <h1>past walls</h1>
+        <a class="back-link" href={`/h/${encodeURIComponent(house.slug)}`}>&larr; back to {house.name}</a>
+      </div>
+      <p class="walls-hint">
+        every version of {house.name}'s wall, saved the moment a wipe-the-wall vote cleared it. Kept for about 6
+        months.
+      </p>
+      {
+        gallery.length === 0 ? (
+          <p class="walls-empty">no past walls yet --- this house's wall has never been wiped.</p>
+        ) : (
+          <div class="walls-grid">
+            {gallery.map((wall) => (
+              <div class="wall-card">
+                <svg viewBox={`0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`} role="img" aria-label={`a saved snapshot of ${wall.name}`}>
+                  <rect x="0" y="0" width={CANVAS_SIZE} height={CANVAS_SIZE} fill="#ffffff" />
+                  {wall.pixels.map((p) => (
+                    <rect x={p.x} y={p.y} width="1" height="1" fill={PALETTE[p.colorIndex]?.hex ?? "#ffffff"} />
+                  ))}
+                </svg>
+                <p class="wall-card-name">{wall.name}</p>
+                <p class="wall-card-when">wiped {new Date(wall.wipedAt * 1000).toLocaleDateString()}</p>
+              </div>
+            ))}
+          </div>
+        )
+      }
+    </main>
+  </body>
+</html>
