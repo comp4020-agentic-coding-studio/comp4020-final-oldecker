@@ -1798,8 +1798,10 @@ const CATEGORY_LABEL: Record<string, string> = {
                 </div>
               </div>
 
-              {/* The bedroom: everyone who lives here, in bunks, awake if
-                  they're in the house right now and asleep if not. Built by
+              {/* The bedroom: only the members who AREN'T in the house right
+                  now. Anyone awake is already standing in the corridor, so
+                  the bedroom's job is "who lives here that isn't already
+                  visible", not a second copy of the same list. Built by
                   src/lib/bedroom.ts, kept live by src/scripts/bedroom-dom.ts
                   off the same presence events as the corridor. */}
               <section class="bedroom" id="bedroom" aria-labelledby="bedroom-title">
@@ -1826,7 +1828,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                       >{bedroomCount(members, awakeIds, person.id)}</span
                     >
                   </h2>
-                  <p class="bedroom-hint">everyone who lives here, awake or asleep. Double-tap anyone to tell them ich hab dich lieb ❤</p>
+                  <p class="bedroom-hint">everyone who lives here but isn't around right now. Double-tap anyone to tell them ich hab dich lieb ❤</p>
                 </div>
                 <div class="bedroom-beds" id="bedroom-beds" set:html={bedroomHtml(members, awakeIds, person.id)} />
                 <script type="application/json" id="bedroom-data" set:html={bedroomJson} />

@@ -97,9 +97,9 @@
 }
 
 /* --- the beds ------------------------------------------------------------
-   A wrapping row standing on the floor: one bed for 1-2 members, eight for
-   15, as many rows as the width needs. A later row reads as beds further
-   back against the wall. */
+   A wrapping row standing on the floor: one bed for 1-2 OFFLINE members,
+   eight for 15, as many rows as the width needs. A later row reads as beds
+   further back against the wall. Anyone online doesn't get a bed at all. */
 .bedroom-beds {
   position: relative;
   z-index: 1;
@@ -110,6 +110,16 @@
   gap: 0.9rem 1.4rem;
   margin-top: 0.6rem;
   padding: 0 0 0.55rem;
+}
+/* shown instead of any beds when nobody's offline */
+.bedroom-empty {
+  position: relative;
+  z-index: 1;
+  margin: 0.6rem 0 0.9rem;
+  padding: 1.1rem 0.5rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 .bunk-bed {
   --blanket: var(--bed-blanket-a);
@@ -297,26 +307,13 @@
   }
 }
 
-/* awake: sitting up a little, a warm ring, and the name in full ink */
-.bunk[data-state="awake"] .bunk-head {
-  border-color: var(--bed-awake);
-  border-width: 2.5px;
-  box-shadow: 0 0 0 4px var(--bed-awake-glow);
-}
-.bunk[data-state="awake"] > .lvl-flair {
-  transform: translateY(calc(-3 * var(--u)));
-}
-.bunk[data-state="awake"] .bunk-name {
-  font-weight: 600;
-}
-.bunk[data-own] .bunk-head {
-  border-color: var(--ink);
-}
-/* someone else's bunk: double-click it for a heart */
-.bunk[data-person-id]:not([data-own]) {
+/* Every bunk shown here is someone offline --- an awake member (including
+   you) never gets one, so there's no "awake"/"own" bunk state left to draw;
+   every bunk is always [data-state="asleep"]. Double-click one for a heart. */
+.bunk[data-person-id] {
   cursor: pointer;
 }
-.bunk[data-person-id]:not([data-own]):hover > .lvl-flair {
+.bunk[data-person-id]:hover > .lvl-flair {
   transform: translateY(calc(-4 * var(--u))) scale(1.06);
 }
 /* the name tag starts right where the head ends, so the bunk's badge sits on

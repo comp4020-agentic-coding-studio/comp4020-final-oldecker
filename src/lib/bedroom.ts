@@ -1,13 +1,20 @@
-// The bedroom: every member of the house, online or not, each tucked into a
-// bunk. One function builds its HTML so the server's first render and every
-// live re-render in the browser (src/scripts/bedroom-dom.ts) are the exact
-// same markup --- the same reason party-dom.ts mirrors the party room's SSR.
-// Styled by src/styles/bedroom.css, a global stylesheet, since the browser
-// rebuilds these elements and Astro's scoped CSS wouldn't reach them.
+// The bedroom: only the members of the house who are NOT currently online,
+// each tucked into a bunk. Anyone awake is already shown standing in the
+// corridor, so showing them here too would just be the same person twice ---
+// the bedroom's whole job is to answer "who lives here that I can't already
+// see", which only means something for the people who aren't visible
+// anywhere else on the page. One function builds its HTML so the server's
+// first render and every live re-render in the browser
+// (src/scripts/bedroom-dom.ts) are the exact same markup --- the same reason
+// party-dom.ts mirrors the party room's SSR. Styled by src/styles/bedroom.css,
+// a global stylesheet, since the browser rebuilds these elements and Astro's
+// scoped CSS wouldn't reach them.
 //
-// Beds fill bottom bunk first (nobody wants the top bunk), two people per
+// Beds fill bottom bunk first (nobody wants the top bunk), two sleepers per
 // bed, in the order they moved in, so nobody swaps beds when someone else
-// comes online. An odd number leaves the last top bunk made but empty.
+// comes online or goes offline. An odd number of sleepers leaves the last
+// top bunk made but empty. If nobody's offline, there are no beds to draw at
+// all, so bedroomHtml() returns a friendly empty state instead.
 import { renderAvatarSvg } from "./face";
 import { escapeHtml } from "./html";
 import { clampLevel, flairHtml } from "./levels";
@@ -48,36 +55,48 @@ const BEDDING = `<svg class="bunk-bedding" viewBox="0 0 94 34" aria-hidden="true
 <path d="M27 31.5h65" class="bed-blanket-hem"/>
 </svg>`;
 
-function bunkHtml(who: Sleeper | undefined, bunk: "top" | "bottom", awake: Set<string>, ownId: string): string {
+// Shown instead of any beds when every member is currently online --- an
+// empty row of beds (or nothing at all) would read as a bug, not as "good
+// news, everyone's up".
+const EMPTY_STATE = `<p class="bedroom-empty">everyone's awake! no one to see here right now.</p>`;
+
+// Every sleeper here is, by construction, offline --- bedroomHtml() only
+// ever calls this with members it has already filtered out of the awake
+// set --- so there's no "awake" state left to draw; a bunk in this file is
+// always asleep.
+function bunkHtml(who: Sleeper | undefined, bunk: "top" | "bottom"): string {
   if (!who) return `<div class="bunk bunk-${bunk} bunk-empty">${BEDDING}</div>`;
-  const isOwn = who.personId === ownId;
-  const isAwake = isOwn || awake.has(who.personId);
-  const label = isOwn ? "you" : who.name;
-  const state = isAwake ? "awake" : "asleep";
   const lv = clampLevel(who.level ?? 1);
   // The head sits inside the level flair (badge + ring), the same wrapper
   // the corridor and party chips use, so level-dom.ts updates it live.
   const head = flairHtml(lv, `<span class="bunk-head"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(who.avatar)}</svg></span>`);
-  return `<div class="bunk bunk-${bunk}" data-person-id="${escapeHtml(who.personId)}" data-name="${escapeHtml(who.name)}" data-state="${state}"${isOwn ? ' data-own="true"' : ""} title="${escapeHtml(`${who.name} · level ${lv} · ${isAwake ? "awake, in the house now" : "asleep"}`)}">${BEDDING}${head}<span class="bunk-name">${escapeHtml(label)}</span>${isAwake ? "" : '<span class="bunk-z" aria-hidden="true">z<i>z</i></span>'}</div>`;
+  return `<div class="bunk bunk-${bunk}" data-person-id="${escapeHtml(who.personId)}" data-name="${escapeHtml(who.name)}" data-state="asleep" title="${escapeHtml(`${who.name} · level ${lv} · asleep`)}">${BEDDING}${head}<span class="bunk-name">${escapeHtml(who.name)}</span><span class="bunk-z" aria-hidden="true">z<i>z</i></span></div>`;
 }
 
+// Only the members who are NOT in `awakeIds` get a bunk --- an awake member
+// (including you, since you're reading this) is already visible in the
+// corridor, so this list is "everyone who lives here that you can't already
+// see standing around". If that list is empty, there's nothing to draw a bed
+// for, so the room shows the empty state instead of zero beds.
 export function bedroomHtml(members: Sleeper[], awakeIds: Iterable<string>, ownId: string): string {
   const awake = new Set(awakeIds);
+  awake.add(ownId);
+  const sleeping = members.filter((m) => !awake.has(m.personId));
+  if (sleeping.length === 0) return EMPTY_STATE;
   const beds: string[] = [];
-  for (let i = 0; i < Math.max(members.length, 1); i += 2) {
-    const bottom = members[i];
-    const top = members[i + 1];
-    beds.push(
-      `<div class="bunk-bed">${FRAME}${bunkHtml(top, "top", awake, ownId)}${bunkHtml(bottom, "bottom", awake, ownId)}</div>`,
-    );
+  for (let i = 0; i < sleeping.length; i += 2) {
+    const bottom = sleeping[i];
+    const top = sleeping[i + 1];
+    beds.push(`<div class="bunk-bed">${FRAME}${bunkHtml(top, "top")}${bunkHtml(bottom, "bottom")}</div>`);
   }
   return beds.join("");
 }
 
-// "3 of 5 awake" for the room's heading.
+// "3 of 5 asleep" for the room's heading, or "everyone's awake" when there's
+// no one left to show.
 export function bedroomCount(members: Sleeper[], awakeIds: Iterable<string>, ownId: string): string {
   const awake = new Set(awakeIds);
   awake.add(ownId);
-  const n = members.filter((m) => awake.has(m.personId)).length;
-  return `${n} of ${members.length} awake`;
+  const n = members.filter((m) => !awake.has(m.personId)).length;
+  return n === 0 ? "everyone's awake" : `${n} of ${members.length} asleep`;
 }

@@ -1,9 +1,12 @@
 // The bedroom, kept live. No channel of its own: it listens to the same
 // per-house `presence` events the corridor does (who's awake = who has the
-// house open), plus `member_joined` for a new bunk (both wired in live.ts),
-// and level changes via updateSleeperLevel() (called from level-dom.ts).
-// Rebuilt through the same bedroomHtml() the server rendered it with, so a
-// live update looks exactly like a fresh load.
+// house open, and awake members are left out of the bedroom entirely ---
+// they're already standing in the corridor), plus `member_joined` for a new
+// bunk (both wired in live.ts), and level changes via updateSleeperLevel()
+// (called from level-dom.ts). Rebuilt through the same bedroomHtml() the
+// server rendered it with, so a live update looks exactly like a fresh load:
+// someone going offline grows a bunk without a reload, and someone coming
+// online loses theirs the same way.
 import { bedroomCount, bedroomHtml, type Sleeper } from "../lib/bedroom";
 import type { PresenceEntry } from "./party-dom";
 
