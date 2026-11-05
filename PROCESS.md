@@ -1530,3 +1530,47 @@ line under the progress bar, the +8 cap and +4 bonus in the points, a
 on another member's page after one action, with no horizontal overflow and
 no page errors. The bunk screenshot caught the flame sitting on the "zz";
 it moved to the upper left there.
+
+## Reading late, and what it changed
+
+I built most of this before reading anything about what "good" looks like at
+this scale, and the README says so rather than pretending otherwise. When I
+did read, it mostly confirmed the shape of the app and corrected the way I'd
+been describing its goal.
+
+The correction came from Nielsen's participation inequality. I'd written the
+goal as "the quiet people post about as often as the loud ones", with an
+equal-posting floor
+([`5cb88c4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-oldecker/commit/5cb88c4)).
+Reading Nielsen properly made two problems with that obvious. First, 90-9-1
+is a pattern from large public communities, and there's no reason to expect
+fifteen friends who already know each other to follow it. Second, and more
+important, it treated the quiet people as the thing to fix. A friend who
+reads every post and never writes one is still keeping up with us, and an
+app that measures them as failing would be making exactly the pressure I
+wanted to avoid. So the definition of good is now about making it *easy and
+comfortable* to take part, with reading counted as taking part, not about
+equal output. That change went into the README's headline, the
+judged-claims list (visits, waterings and hearts count as showing up, not
+just posts) and a new CLAUDE.md rule: never frame quiet people as a problem.
+
+Sloan and Shirky didn't change anything, but they gave me words for
+decisions I'd made on instinct. Sloan's home-cooked meal is the reason I
+never built growth features and don't count that as a gap. Shirky's situated
+software explains why an invite link from a friend can be the whole access
+model: the group's existing trust does the moderating. It also names the
+honest limit. Everything I judge here, I judge against this one group, and
+none of it is evidence about anyone else's.
+
+Two readings made me less sure of decisions I'd already shipped. Weiser and
+Brown's calm technology supports the plant and the corridor sitting at the
+edge of your attention, but it doesn't support my crit 9 claim that
+reload-only posts are *calmer*. That was my own argument, and live presence
+might just as well create pressure to reply. And reading Duolingo's own
+account of streaks, alongside Eyal's habit model, made "daily streaks serve
+the platform, weekly ones serve the friends" too neat. Duolingo plausibly
+does want learners to build a habit. The difference I can actually defend
+is narrower: missing a week here costs only a capped bonus, and nothing
+compares people except the leaderboard. That leaderboard, and public levels
+generally, are now the decision I'm least confident about, and the README
+says so.

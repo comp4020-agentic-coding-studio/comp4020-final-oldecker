@@ -52,12 +52,16 @@ rather than just at it. That's the gap this is meant to close.
 
 ## What "good" means here
 
-**Good means the quiet people show up about as often as the loud ones.** The
-failure I'm designing against is the normal one for group spaces, where two
-or three people carry everything and the rest lurk until it feels like
-somebody else's room. Concretely, the floor I'm aiming for is everyone
-posting something, or at least turning up, every couple of weeks. More than
-that is a bonus, not the bar.
+**Good means the quieter people in the group can take part comfortably,
+and still feel like it's their room too.** The failure I'm designing against
+is the usual one in group spaces: a few people carry everything, and the rest
+gradually feel like guests in somebody else's room. Nielsen calls this
+participation inequality (see below). What I'm *not* aiming for is everyone
+posting equally. Reading quietly is a real way of staying connected, and
+treating quiet friends as a problem to fix would be its own failure. So the
+measure is softer: everyone should be able to show up, in some way, every
+couple of weeks without it feeling like a performance. Posting is one of
+several ways to do that.
 
 That one idea decides most of the app:
 
@@ -94,25 +98,83 @@ That one idea decides most of the app:
   swapped" is right, and the group already has a chat for logistics. This
   is for the slower kind of keeping up.
 - **No live-updating posts.** The house's ambient state is live, but posts
-  wait for a reload. A post that pops in while you're reading another one
-  pulls attention to whoever's posting right now. That's the opposite of
-  what I want for the quiet ones (the full argument is in PROCESS.md, under
-  the crit 9 decision).
+  wait for a reload, so you decide when new posts reach you. A post popping
+  in while you're reading another one would pull attention to whoever is
+  posting right now (the full argument is in PROCESS.md, under the crit 9
+  decision). This is a design bet, not a settled fact; see below.
 - **No daily streaks or daily nudges**, for the reason above.
 
-## What I read, and what I changed my mind about
+## What I read, and what it changed
 
-I didn't start from reading. The early decisions came from reasoning about
-what my specific friends need, and from reacting against the brief's
-"median answer" warning. The one place I changed course on the record is
-**public levels**. PROCESS.md argues, before anything was built, that streaks
-and levels should be visible only to their owner, since public numbers are
-how a retention mechanic turns into pressure to perform. After using it, I
-reversed that. In a closed group of friends, seeing someone's level, or the
-little flame for their weekly streak, is closer to seeing that they've been
-around lately than to ranking them, and a private number did nothing for
-the group-level goal above. The leaderboard
-sits at the bottom of the page, under everything else, on purpose.
+I started from reasoning about my specific friends rather than from reading,
+and came to most of these sources part-way through, so some confirmed
+decisions I'd already made and some changed them. The argument rests on
+Sloan and Shirky. Nielsen states the problem, calm technology shapes how the
+house feels, Rao and Strickler explain the wider context, and Eyal and
+Duolingo are the alternative I argue against.
+
+- **Robin Sloan, ["An app can be a home-cooked
+  meal"](https://www.robinsloan.com/notes/home-cooked-app/) (2020).** Sloan
+  built a messaging app for his family of four and nobody else. This answers
+  "why build a little website just for us?": its value comes from care,
+  familiarity and usefulness to the people it's for, and it needs no growth
+  plan to be worth making. It's why shared jokes, the hand-drawn house and
+  the *ich hab dich lieb* are features, not decoration.
+- **Clay Shirky, ["Situated
+  Software"](https://web.archive.org/web/20040411202042/http://www.shirky.com/writings/situated.html)
+  (2004).** Shirky describes software built for one social situation, where
+  the group's existing relationships do part of the work. That's why the
+  board leans on trust instead of moderation tools: an invite link from a
+  friend is the whole access model. It's also the limit of everything here:
+  what works for this group may not work for any other.
+- **Jakob Nielsen, ["Participation Inequality: Encouraging More Users to
+  Contribute"](https://www.nngroup.com/articles/participation-inequality/)
+  (2006).** In online communities a small minority makes most of the
+  contributions (the "90-9-1" rule). The pattern comes from large public
+  communities, so I don't treat it as a prediction for fifteen friends. I
+  take two things from it: make taking part easier (short updates, a
+  temperature drag, a pixel, a heart), and don't count reading as failure.
+  This is what moved my definition of good away from "everyone posts as
+  often as everyone else".
+- **Mark Weiser and John Seely Brown, ["Designing Calm
+  Technology"](https://calmtech.com/papers/designing-calm-technology.html)
+  (1995).** Calm technology lets information sit at the edge of your
+  attention and come to the centre only when you want it. The plant, the
+  corridor and the lit-up windows on the street are meant to work that way.
+  The paper doesn't show that posts waiting for a reload are calmer; that is
+  my hypothesis. Live presence could just as easily create pressure to
+  reply, so I treat both as things to check with the group, not settled
+  facts.
+- **Venkatesh Rao, ["The Extended Internet
+  Universe"](https://studio.ribbonfarm.com/p/the-extended-internet-universe)
+  (2019), and Yancey Strickler, ["The Dark Forest Theory of the
+  Internet"](https://onezero.medium.com/the-dark-forest-theory-of-the-internet-7dc3e68a7cb1)
+  (2019).** Rao's "cozyweb" names the private chats and groups where a lot of
+  real online life now happens. Strickler explains why people retreat there
+  from public spaces. Together they back the boundary of the app: invite-only,
+  no discovery, an audience that's always clear. They're interpretive
+  essays, though, not evidence that privacy alone makes people closer.
+- **Nir Eyal, *Hooked* (2014), and [Duolingo's
+  streaks](https://blog.duolingo.com/how-duolingo-streak-builds-habit/).**
+  Eyal gives a model of habit formation, and Duolingo uses daily streaks for
+  both learning habits and retention. It would be unfair to say they only
+  serve platform numbers. The real question for me is which habits serve a
+  friendship. A weekly streak asks for less, but it can still make people
+  feel guilty or post just to keep it alive. So the design choices that
+  matter are that missing a week costs only the small bonus, that the bonus
+  is capped well below what genuine activity earns, and that it rewards
+  showing up rather than volume.
+
+**What I changed my mind about.** PROCESS.md argues, before anything was
+built, that streaks and levels should be visible only to their owner, since
+public numbers are how a retention mechanic turns into pressure to perform.
+After using it, I reversed that. In a closed group of friends, seeing
+someone's level, or the little flame for their weekly streak, is closer to
+seeing that they've been around lately than to ranking them, and a private
+number did nothing for the group goal above. The Eyal and Duolingo reading
+makes this the decision I'm least sure of. The leaderboard sits at the
+bottom of the page, under everything else, on purpose, and it's the first
+thing I'd remove if the group says it feels like comparison.
 
 ## What's enforced and what's judged
 
@@ -142,9 +204,17 @@ against the running app:
   (`wallvote.test.ts`).
 - **What you do persists** across sessions and restarts (`alive.test.ts`).
 
-Other claims can only be judged. Whether the quiet people actually show up
-more is a claim about my friends, not the code, and I'm judging it by
-watching who posts and who turns up in the audit log over the weeks it's
-been running. Whether the house *feels* like a place rather than a feed is
-judged by playtesting, and PROCESS.md records the corrections that came out
-of that.
+Other claims can only be judged, and they're claims about my friends, not
+the code:
+
+- **Do quieter people take part comfortably?** I'm judging this from who
+  turns up in the audit log over the weeks (visits, waterings and hearts,
+  not just posts), and by asking them, since a number can't tell comfortable
+  from obliged.
+- **Does the house feel calm rather than demanding?** Specifically, does the
+  plant give a sense of connection without asking for attention, and does
+  reload-only actually feel like control over when posts arrive? Judged by
+  playtesting with the group. PROCESS.md records the corrections that came
+  out of that.
+- **Do streaks and public levels feel friendly or like pressure?** This is
+  the claim I'm least sure of, and the one I'd change first.

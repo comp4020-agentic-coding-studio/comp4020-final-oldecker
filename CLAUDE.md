@@ -14,8 +14,10 @@ dont delete the uploaded posts that are already on there
 ## What this app is for
 
 `README.md` is the argument; read it before changing behaviour. In one line:
-**good means the quiet people show up about as often as the loud ones.** It
-is a closed space for one group of friends. Every rule below comes from that.
+**good means the quieter people in the group can take part comfortably and
+still feel it's their room too.** Reading quietly counts as taking part; the
+goal is not equal posting. It is a closed space for one group of friends.
+Every rule below comes from that.
 
 ## Never
 
@@ -37,6 +39,10 @@ is a closed space for one group of friends. Every rule below comes from that.
   distinct days and weeks of showing up, not how many times something was
   done. Don't add likes, follower counts, or anything that ranks posts
   against each other.
+- **Never frame quiet people as a problem.** No "you haven't posted"
+  messages, no shaming copy, nothing that marks someone who only reads as
+  failing. Missing a week costs only the small streak bonus, and that's the
+  whole penalty.
 - **Never add daily streaks or daily nudges.** Streaks count weeks. Push
   notifications are for things a person was sent or would want to know
   about (a heart, a knock, a friend's post), never "you haven't been on
