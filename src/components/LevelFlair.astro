@@ -9,12 +9,15 @@
 // global stylesheet so it reaches client-built chips too. Any element with a
 // data-person-id that contains one of these is kept up to date live by
 // src/scripts/level-dom.ts when that person's level changes.
-import { clampLevel } from "../lib/levels";
+import { clampLevel, clampStreak, streakBadgeHtml } from "../lib/levels";
 
 interface Props {
   level: number | undefined;
+  // weekly streak: a flame pill after the badge from 2 weeks on
+  streak?: number | undefined;
 }
 const lv = clampLevel(Astro.props.level ?? 1);
+const st = clampStreak(Astro.props.streak ?? 0);
 ---
 
-<span class="lvl-flair" data-level={lv}><slot /><span class="lvl-badge" role="img" aria-label={`level ${lv}`}>{lv}</span></span>
+<span class="lvl-flair" data-level={lv} data-streak={st}><slot /><span class="lvl-badge" role="img" aria-label={`level ${lv}`}>{lv}</span><Fragment set:html={streakBadgeHtml(st)} /></span>

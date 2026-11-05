@@ -1278,3 +1278,108 @@ turnout guard once its window has passed, while yes-beats-no with 2+ yes
 votes passes the same way; a live SSE stream across two ballots and a quick
 pass showed `wall_vote_update` firing after each ballot and `wall_wiped`
 firing exactly once, immediately before the vote's own `passed` update.
+
+## Weekly streaks, not daily ones
+
+The streak I argued for back in "Streaks: a deliberate choice, not a
+default" is built now, and the one thing I changed from the obvious version
+is the unit. It counts **weeks**, not days. A week (a Canberra calendar week,
+Monday 00:00 to Sunday night) counts if you showed up on at least one day in
+it. Your streak is how many counted weeks in a row end at this week --- or at
+last week, because this week isn't broken until it's over: a streak through
+last week stays alive all the way to Sunday 23:59.
+
+**Why weekly.** A Duolingo-style daily streak is built for a platform's
+retention: it rewards opening the app every single day, and it punishes one
+missed day by taking everything away, which is exactly the pressure the
+earlier section said to avoid. It also rewards the wrong people here. The
+app's definition of good is that the *quiet* people turn up about as often
+as the loud ones --- roughly every couple of weeks at minimum --- not that
+the two or three people who'd post anywhere post more. A daily streak is
+something only the loud ones would ever hold. A weekly one with a
+one-day bar is something everyone in the group can keep without changing
+how they live: look in once a week and it grows. Missing a week resets it,
+but a week is a long time to forget a group of friends, and that is the
+signal worth giving.
+
+**What counts as showing up.** Any `audit_log` row attributed to you,
+weighted or not: posting, watering, rating, a pixel, a heart, a vote --- and
+just opening a house page. That last one needed a new row, because nothing
+logged a visit: sessions are long-lived cookies, so `login` happens once in
+a blue moon. The house page now writes a `house_visit` row, at most once per
+person per Canberra day (not per house, not per load), so the audit log
+gains one quiet line a day. I counted plain looking on purpose: someone who
+opens the board, reads everyone's updates and closes it again *has* shown
+up, and they're precisely the person this is for. `house_visit` has no
+weight, so it never earns level points on its own --- only streak weeks.
+
+**The bonus.** +1 point per streak week from 2 weeks on, capped at +8. A
+one-week "streak" is just "was here this week", so it gives nothing and
+shows nothing. The cap is low on purpose: a single good week of the normal
+actions is worth up to 28 points (the top level), so the streak can't carry
+anyone up the ladder by itself --- two months of looking in once a week and
+doing nothing else is 8 points, level 2 --- but for someone who posts once a
+week (4 points) it's the difference between level 2 and level 3, and a
+shorter pixel cooldown with it. It goes into the same `points` total
+everything else does, so the leaderboard order, the cooldown and the
+level-up toast all see it without knowing about it.
+
+**Derived, not stored --- same as levels.** `streaksFor()` in
+`src/lib/activity.ts` is one grouped query over `audit_log` for any number
+of people: each row is put in a week bucket by a SQL `CASE` over 52 exact
+week starts that `src/lib/week.ts` works out in JS, so SQLite never has to
+know about time zones. No counter, no cron, no schema change, no migration.
+`mostRecentCanberraMonday()` (the plant's) is allowed to be an hour off on a
+DST-switch day; a streak isn't --- a post at 00:30 on a Monday landing in the
+wrong week would break someone's streak for no reason they could see --- so
+`canberraWeekStart()` finds the exact instant of Monday 00:00, using
+Canberra's offset at that midnight. The rules and numbers
+(`streakFromWeeks`, `streakBonus`) live in `src/lib/levels.ts` next to the
+level curve, browser-safe, so the badge means the same thing on both sides.
+
+**Live.** `logAction()` used to re-read your level only for the five
+weighted actions; now it does for every row with a person on it, because
+the first thing you do in a week (even a `house_visit`) can extend your
+streak and so change your points and level. `announceLevel()` fires when
+points, streak or "counted this week" change, and the `level` event carries
+`streak` and `countedThisWeek` alongside `level` and `points`. Presence,
+party, `member_joined` and the bedroom's roster carry `streak` too, so a
+chip rebuilt for any other reason keeps its flame.
+
+**What it looks like.** A small flame pill with the week count on the
+avatar's upper right (upper left in the bunks, where the "zz" floats),
+opposite the level badge, from a 2-week streak on --- on the corridor, party
+room, bedroom and leaderboard avatars, all from the same `flairHtml()` /
+`LevelFlair.astro` pair. It's public, like the level it sits on: the
+earlier section wanted a streak visible only to its owner, but that went
+with levels going public, and a flame that only says "has been around
+every week" doesn't point at anyone the empty corridor didn't already. A
+drawn SVG flame in a new `--streak` colour, not
+the 🔥 emoji: emoji render differently per platform and would clash with
+the flat level numeral right next to them. White on it is 5.2:1 in light
+mode; dark mode uses Tokyo Night's orange with dark ink at 8.4:1. Under your
+own progress bar: "4-week streak (+4 pts) · this week: ✓ counted", or
+"this week: not yet, anything you do here before Sunday night counts" ---
+which, since opening the page counts, you'll mostly see live on another
+device rather than on the page you're looking at.
+
+**How it was verified:** `pnpm typecheck` clean (0 errors, 0 warnings, the
+pre-existing `execCommand` hint); `pnpm build`; the built server against a
+scratch SQLite database on an unused port, with the full spec green twice in
+a row, including a new `spec/streak.test.ts`: Monday 00:00 Canberra in
+summer and winter, a Sunday-evening-UTC timestamp landing in Canberra's
+Monday, both 2026 DST-switch weeks (169 and 167 hours, including the
+repeated 2am hour in April), 52 week starts each exactly one Monday apart;
+consecutive weeks, one day counting the same as seven, last week's streak
+surviving until Sunday 23:59 and dying at Monday 00:00, a gap week breaking
+it, an hour apart across a DST Monday being two weeks; the bonus and cap;
+and a fresh account on the running app showing "this week: ✓ counted" with
+streak 1 and no bonus. Then a throwaway Playwright script put three people
+in one house with backdated `house_visit` rows in the scratch database
+(12-week, 4-week and no streak) and, at 1920x1080 and 390x844 in light and
+dark, checked the flames on the leaderboard and in the bunks, the streak
+line under the progress bar, the +8 cap and +4 bonus in the points, a
+`<b>&"x"` name rendering as text, and a third person's flame appearing live
+on another member's page after one action, with no horizontal overflow and
+no page errors. The bunk screenshot caught the flame sitting on the "zz";
+it moved to the upper left there.

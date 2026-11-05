@@ -41,10 +41,10 @@ export const POST: APIRoute = async ({ request, cookies, url }) => {
     .limit(1)
     .get();
 
-  const { level, points, cooldownSeconds } = activityLevel(person.id);
+  const { level, points, cooldownSeconds, streak, countedThisWeek } = activityLevel(person.id);
   const remaining = cooldownRemaining(last?.createdAt ?? null, cooldownSeconds);
   if (remaining > 0)
-    return new Response(JSON.stringify({ remaining, cooldownSeconds, level, points }), {
+    return new Response(JSON.stringify({ remaining, cooldownSeconds, level, points, streak, countedThisWeek }), {
       status: 429,
       headers: { "content-type": "application/json" },
     });
@@ -70,6 +70,8 @@ export const POST: APIRoute = async ({ request, cookies, url }) => {
       cooldownSeconds: after.cooldownSeconds,
       level: after.level,
       points: after.points,
+      streak: after.streak,
+      countedThisWeek: after.countedThisWeek,
     }),
     { headers: { "content-type": "application/json" } },
   );

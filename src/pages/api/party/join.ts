@@ -24,10 +24,10 @@ export const POST: APIRoute = async ({ cookies, url }) => {
   const { expiresAt } = joinParty(house.id, person.id);
   logAction(person, "party_join", `house=${house.slug} expiresAt=${expiresAt}`);
   // After the log line, so joining's own points are already counted.
-  const { level } = activityLevel(person.id);
+  const { level, streak } = activityLevel(person.id);
   broadcast(house.id, {
     type: "party_joined",
-    data: { personId: person.id, name: person.name, avatar: person.avatar, expiresAt, level },
+    data: { personId: person.id, name: person.name, avatar: person.avatar, expiresAt, level, streak },
   });
-  return new Response(JSON.stringify({ expiresAt, level }), { headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify({ expiresAt, level, streak }), { headers: { "content-type": "application/json" } });
 };

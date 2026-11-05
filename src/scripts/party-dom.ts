@@ -13,7 +13,7 @@ import { renderAvatarSvg } from "../lib/face";
 import { escapeHtml } from "../lib/html";
 
 export { escapeHtml };
-import { clampLevel, flairHtml } from "../lib/levels";
+import { clampLevel, clampStreak, flairHtml } from "../lib/levels";
 
 // `level` is the person's public activity level, for the badge and ring.
 export interface PartyGuest {
@@ -22,6 +22,7 @@ export interface PartyGuest {
   avatar: string;
   expiresAt: number;
   level: number;
+  streak?: number;
 }
 
 export interface PresenceEntry {
@@ -29,6 +30,7 @@ export interface PresenceEntry {
   name: string;
   avatar: string;
   level: number;
+  streak?: number;
 }
 
 const roomEl = document.querySelector<HTMLElement>("#party-room-guests");
@@ -37,9 +39,9 @@ const yourChip = document.querySelector<HTMLElement>("#party-you");
 const corridorEl = document.querySelector<HTMLElement>("#corridor-guests");
 const corridorEmpty = document.querySelector<HTMLElement>("#corridor-empty");
 
-function chipHtml(name: string, avatar: string, level: number): string {
+function chipHtml(name: string, avatar: string, level: number, streak = 0): string {
   const circle = `<span class="party-avatar-circle"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(avatar)}</svg></span>`;
-  return `${flairHtml(level, circle)}<span class="party-guest-name">${escapeHtml(name)}</span>`;
+  return `${flairHtml(level, circle, streak)}<span class="party-guest-name">${escapeHtml(name)}</span>`;
 }
 
 export function chipTitle(name: string, level: number): string {
@@ -55,7 +57,7 @@ function guestEl(guest: PartyGuest, isOwn: boolean): HTMLElement {
   el.title = chipTitle(guest.name, guest.level);
   // Matches the house page's SSR markup exactly, so a person who joins live
   // over SSE looks identical to one rendered on the page's first load.
-  el.innerHTML = chipHtml(guest.name, guest.avatar, guest.level);
+  el.innerHTML = chipHtml(guest.name, guest.avatar, guest.level, guest.streak);
   return el;
 }
 
@@ -67,14 +69,19 @@ let present: PresenceEntry[] = [...(corridorEl?.querySelectorAll<HTMLElement>(".
     name: el.dataset.name ?? "",
     avatar: el.dataset.avatar ?? "",
     level: clampLevel(el.dataset.level),
+    streak: clampStreak(el.dataset.streak),
   }),
 );
 
 // A live level change (level-dom.ts) has to land in this cache too, or the
 // next corridor redraw (someone else joining the room, say) would put the
 // old badge back.
-export function updateCachedLevel(personId: string, level: number): void {
-  for (const p of present) if (p.personId === personId) p.level = level;
+export function updateCachedLevel(personId: string, level: number, streak: number): void {
+  for (const p of present)
+    if (p.personId === personId) {
+      p.level = level;
+      p.streak = streak;
+    }
 }
 
 function inRoom(personId: string): boolean {
@@ -87,7 +94,7 @@ function renderCorridor(ownPersonId: string): void {
   corridorEl.innerHTML = standing
     .map(
       (p) =>
-        `<span class="party-guest corridor-guest" data-person-id="${escapeHtml(p.personId)}" data-name="${escapeHtml(p.name)}" title="${escapeHtml(chipTitle(p.name, p.level))}">${chipHtml(p.name, p.avatar, p.level)}</span>`,
+        `<span class="party-guest corridor-guest" data-person-id="${escapeHtml(p.personId)}" data-name="${escapeHtml(p.name)}" title="${escapeHtml(chipTitle(p.name, p.level))}">${chipHtml(p.name, p.avatar, p.level, p.streak)}</span>`,
     )
     .join("");
   if (corridorEmpty) corridorEmpty.hidden = standing.length > 0 || !yourChip?.hidden;

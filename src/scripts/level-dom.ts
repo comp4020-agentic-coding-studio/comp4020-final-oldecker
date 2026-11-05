@@ -9,7 +9,19 @@
 // (pixel-canvas.ts) --- both call applyLevel(). Presence and party payloads
 // also carry each person's level, so chips rebuilt by party-dom.ts are
 // already right.
-import { ACTION_HINTS, ACTION_WEIGHTS, clampLevel, formatCadence, LEVELS, levelLine, levelProgress, progressLine } from "../lib/levels";
+import {
+  ACTION_HINTS,
+  ACTION_WEIGHTS,
+  clampLevel,
+  clampStreak,
+  formatCadence,
+  LEVELS,
+  levelLine,
+  levelProgress,
+  progressLine,
+  streakBadgeHtml,
+  streakLine,
+} from "../lib/levels";
 import { updateSleeperLevel } from "./bedroom-dom";
 import { updateCachedLevel } from "./party-dom";
 
@@ -47,13 +59,15 @@ function cooldownFor(level: number): number {
 }
 
 // --- badges and rings, for anyone ---------------------------------------
-function updateFlairs(personId: string, level: number): void {
+function updateFlairs(personId: string, level: number, streak: number): void {
   const holders = document.querySelectorAll<HTMLElement>(`[data-person-id="${CSS.escape(personId)}"]`);
   for (const holder of holders) {
     const name = holder.dataset.name;
     if (holder.classList.contains("party-guest") && name && holder.title) holder.title = `${name} · level ${level}`;
     if (holder.dataset.level !== undefined) holder.dataset.level = String(level);
+    if (holder.dataset.streak !== undefined) holder.dataset.streak = String(streak);
     for (const flair of holder.querySelectorAll<HTMLElement>(".lvl-flair")) {
+      setFlairStreak(flair, streak);
       const before = clampLevel(flair.dataset.level);
       if (before === level) continue;
       flair.dataset.level = String(level);
@@ -65,6 +79,15 @@ function updateFlairs(personId: string, level: number): void {
       if (level > before) bump(flair);
     }
   }
+}
+
+// The flame pill after the level badge: replaced wholesale (it is only
+// numbers and a fixed SVG, from the same streakBadgeHtml() the server uses).
+function setFlairStreak(flair: HTMLElement, streak: number): void {
+  if (clampStreak(flair.dataset.streak) === streak) return;
+  flair.dataset.streak = String(streak);
+  flair.querySelector(".lvl-streak")?.remove();
+  flair.insertAdjacentHTML("beforeend", streakBadgeHtml(streak));
 }
 
 function bump(el: HTMLElement): void {
@@ -106,8 +129,14 @@ function updateLeaderboard(personId: string, level: number, points: number): voi
 }
 
 // --- your own progress ------------------------------------------------------
-function renderProgress(level: number, points: number): void {
+function renderProgress(level: number, points: number, streak: number, countedThisWeek: boolean): void {
   if (!progressEl) return;
+  progressEl.dataset.streak = String(streak);
+  progressEl.dataset.countedThisWeek = String(countedThisWeek);
+  const streakEl = progressEl.querySelector("#level-streak");
+  streakEl?.classList.toggle("counted", countedThisWeek);
+  const streakText = progressEl.querySelector("#level-streak-text");
+  if (streakText) streakText.textContent = streakLine(streak, countedThisWeek);
   const p = levelProgress(points);
   progressEl.dataset.level = String(level);
   progressEl.dataset.points = String(points);
@@ -182,10 +211,10 @@ function celebrate(level: number): void {
   }, 4500);
 }
 
-function updateMine(level: number, points: number): void {
+function updateMine(level: number, points: number, streak: number, countedThisWeek: boolean): void {
   const previous = myLevel;
   myLevel = level;
-  renderProgress(level, points);
+  renderProgress(level, points, streak, countedThisWeek);
   if (level > seenLevel) celebrate(level);
   seenLevel = level;
   writeSeen(level);
@@ -196,15 +225,22 @@ function updateMine(level: number, points: number): void {
   void refreshHints();
 }
 
-// The one entry point: someone's level or points changed.
-export function applyLevel(personId: string, rawLevel: unknown, rawPoints: unknown): void {
+// The one entry point: someone's level, points or weekly streak changed.
+export function applyLevel(
+  personId: string,
+  rawLevel: unknown,
+  rawPoints: unknown,
+  rawStreak: unknown,
+  rawCounted: unknown,
+): void {
   const level = clampLevel(rawLevel);
   const points = Math.max(0, Math.round(Number(rawPoints) || 0));
-  updateCachedLevel(personId, level);
-  updateSleeperLevel(personId, level);
-  updateFlairs(personId, level);
+  const streak = clampStreak(rawStreak);
+  updateCachedLevel(personId, level, streak);
+  updateSleeperLevel(personId, level, streak);
+  updateFlairs(personId, level, streak);
   updateLeaderboard(personId, level, points);
-  if (personId === ownPersonId) updateMine(level, points);
+  if (personId === ownPersonId) updateMine(level, points, streak, rawCounted === true);
 }
 
 // On load: if you're higher than the level this browser last saw you at,

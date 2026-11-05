@@ -19,8 +19,8 @@ const ownAvatar = youChip?.dataset.avatar ?? "";
 async function joinRoom(): Promise<void> {
   const res = await fetch(houseUrl("/api/party/join"), { method: "POST" });
   if (!res.ok) throw new Error("join failed");
-  const { expiresAt, level } = (await res.json()) as { expiresAt: number; level: number };
-  applyPartyJoin({ personId: ownPersonId, name: ownName, avatar: ownAvatar, expiresAt, level }, ownPersonId);
+  const { expiresAt, level, streak } = (await res.json()) as { expiresAt: number; level: number; streak: number };
+  applyPartyJoin({ personId: ownPersonId, name: ownName, avatar: ownAvatar, expiresAt, level, streak }, ownPersonId);
 }
 
 async function leaveRoom(): Promise<void> {

@@ -76,24 +76,33 @@ svg?.addEventListener("click", async (event) => {
   });
 
   if (res.status === 429) {
-    const { remaining, level, points, cooldownSeconds } = (await res.json()) as {
+    const { remaining, level, points, cooldownSeconds, streak, countedThisWeek } = (await res.json()) as {
       remaining: number;
       level: number;
       points: number;
       cooldownSeconds: number;
+      streak: number;
+      countedThisWeek: boolean;
     };
     startCooldown(remaining, cooldownSeconds);
-    applyLevel(ownPersonId, level, points);
+    applyLevel(ownPersonId, level, points, streak, countedThisWeek);
     return;
   }
   if (!res.ok) return;
 
-  const placed = (await res.json()) as { colorIndex: number; cooldownSeconds: number; level: number; points: number };
+  const placed = (await res.json()) as {
+    colorIndex: number;
+    cooldownSeconds: number;
+    level: number;
+    points: number;
+    streak: number;
+    countedThisWeek: boolean;
+  };
   rect.setAttribute("fill", PALETTE[placed.colorIndex]?.hex ?? "#ffffff");
   // Countdown first, so a level-up this placement caused doesn't then
   // "shorten" a wait that already uses the new cooldown.
   startCooldown(placed.cooldownSeconds, placed.cooldownSeconds);
-  applyLevel(ownPersonId, placed.level, placed.points);
+  applyLevel(ownPersonId, placed.level, placed.points, placed.streak, placed.countedThisWeek);
 });
 
 // Renaming the wall --- identical click-to-edit shape as the plant's own

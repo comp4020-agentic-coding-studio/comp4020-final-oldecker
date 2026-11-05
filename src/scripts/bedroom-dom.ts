@@ -40,6 +40,10 @@ export function applyBedroomPresence(here: PresenceEntry[]): void {
       m.level = p.level;
       changed = true;
     }
+    if (m && p.streak !== undefined && m.streak !== p.streak) {
+      m.streak = p.streak;
+      changed = true;
+    }
   }
   awake = next;
   if (changed) render();
@@ -55,9 +59,12 @@ export function applyMemberJoined(member: Sleeper): void {
 // place; this keeps the cached roster in step so the next re-render (someone
 // coming online, say) doesn't put the old badge back --- asleep members
 // included, who aren't in any presence payload.
-export function updateSleeperLevel(personId: string, level: number): void {
+export function updateSleeperLevel(personId: string, level: number, streak: number): void {
   const m = members.find((m) => m.personId === personId);
-  if (m) m.level = level;
+  if (m) {
+    m.level = level;
+    m.streak = streak;
+  }
   const bunk = bedsEl?.querySelector<HTMLElement>(`.bunk[data-person-id="${CSS.escape(personId)}"]`);
   if (bunk) bunk.title = bunk.title.replace(/ · level \d+ · /, ` · level ${level} · `);
 }
