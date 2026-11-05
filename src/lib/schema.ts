@@ -421,3 +421,29 @@ export const wallGallery = sqliteTable(
   },
   (table) => [index("wall_gallery_house_idx").on(table.houseId, table.wipedAt)],
 );
+
+// One row per phone/browser that said yes to notifications (src/lib/push.ts).
+// The endpoint is the push service's URL for that one device, so it's the
+// natural key: subscribing the same device twice is the same row. A row is
+// only ever removed by its owner turning notifications off, or by the push
+// service answering 404/410 (that device's subscription is gone) --- this is
+// delivery plumbing, never anybody's content.
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
+    index("push_subscriptions_person_idx").on(table.personId),
+  ],
+);

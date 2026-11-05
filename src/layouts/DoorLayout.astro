@@ -1,4 +1,5 @@
 ---
+import AppHead from "../components/AppHead.astro";
 // Shell for the single-house "front door" pages: an invite link
 // (/join/<code>) and the door you get at /h/<slug> when you're not a member
 // (/door). One centred house front over a strip of pavement, then the slot.
@@ -17,6 +18,7 @@ const { title, paint = 0 } = Astro.props;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <AppHead />
     <title>{title} · the board</title>
   </head>
   <body>

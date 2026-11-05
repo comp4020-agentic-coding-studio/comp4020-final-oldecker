@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { logAction } from "../../lib/audit";
 import { db } from "../../lib/db";
 import { houseAccess } from "../../lib/houses";
+import { pushNewPost } from "../../lib/push";
 import { postImages, posts } from "../../lib/schema";
 import { MAX_IMAGES_PER_POST, saveUpload, UploadRejected, writeUpload } from "../../lib/uploads";
 
@@ -49,5 +50,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
     db.insert(postImages).values({ postId, path, position }).run();
 
   logAction(person, "post_create", `house=${house.slug} id=${postId} category=${category}`);
+  // housemates who aren't looking get one buzz per ~30 min per house (push.ts)
+  pushNewPost(house, person);
   return redirect(`/h/${encodeURIComponent(house.slug)}`, 303);
 };

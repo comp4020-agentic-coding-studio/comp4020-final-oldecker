@@ -164,6 +164,12 @@ export function presenceSnapshot(houseId: number): PresenceEntry[] {
   }));
 }
 
+// Has this person got this house open in at least one tab right now? Used by
+// src/lib/push.ts to skip a phone notification for someone already looking.
+export function isPresent(houseId: number, personId: string): boolean {
+  return present.get(houseId)?.has(personId) ?? false;
+}
+
 export function presentCount(houseId: number): number {
   return present.get(houseId)?.size ?? 0;
 }

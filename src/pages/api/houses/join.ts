@@ -4,6 +4,7 @@ import { broadcast } from "../../../lib/events";
 import { addMember, houseByInviteCode, houseByName, isMember, setLastHouse } from "../../../lib/houses";
 import { currentPerson } from "../../../lib/identity";
 import { closeKnockOnJoin, doorKnock, knock } from "../../../lib/knocks";
+import { pushKnock } from "../../../lib/push";
 
 export const prerender = false;
 
@@ -61,6 +62,8 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     logAction(person, "house_knock", `house=${house.slug} knocker=${person.name} knock=${id}`);
     const entry = doorKnock(id);
     if (entry) broadcast(house.id, { type: "knock", data: entry });
+    // and a phone buzz for members who don't have the house open (push.ts)
+    pushKnock(house, person.name);
   }
   return redirect(`/houses?${new URLSearchParams({ knocked: house.slug })}`, 303);
 };

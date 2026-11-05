@@ -12,6 +12,7 @@ import type { APIRoute } from "astro";
 import { logAction } from "../../lib/audit";
 import { houseAccess } from "../../lib/houses";
 import { sendLieb } from "../../lib/lieb";
+import { pushLieb } from "../../lib/push";
 
 export const prerender = false;
 
@@ -29,5 +30,8 @@ export const POST: APIRoute = async ({ request, cookies, url }) => {
   if (!result.ok) return json({ ok: false, reason: result.reason, toName: result.toName }, result.status);
 
   logAction(person, "lieb_send", `house=${house.slug} to=${to.slice(0, 8)} live=${result.live}`);
+  // Didn't land in an open tab: a phone notification instead, if they've
+  // turned them on (fire-and-forget, see src/lib/push.ts).
+  if (!result.live) pushLieb(house, person, to);
   return json({ ok: true, toName: result.toName, live: result.live });
 };

@@ -1,0 +1,56 @@
+---
+// The "turn on notifications" control (src/scripts/push-toggle.ts does the
+// work). Not rendered at all when the server has no VAPID keys --- push is
+// off there, so there's nothing to offer. The script decides which of its
+// states to show: on / off / blocked / unsupported, or the iPhone
+// "add to home screen first" hint.
+import { pushPublicKey } from "../lib/push";
+
+const key = pushPublicKey();
+---
+
+{
+  key && (
+    <span class="push-toggle" data-vapid-key={key}>
+      <button type="button" class="push-button" hidden>
+        notifications
+      </button>
+      <span class="push-note" role="status" aria-live="polite" hidden />
+    </span>
+  )
+}
+
+<script src="../scripts/push-toggle.ts" />
+
+<style>
+  .push-toggle {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .push-button {
+    padding: 0.25rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .push-button[data-state="on"] {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .push-button:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .push-note {
+    font-size: 0.75rem;
+    opacity: 0.75;
+    max-width: 22rem;
+  }
+</style>

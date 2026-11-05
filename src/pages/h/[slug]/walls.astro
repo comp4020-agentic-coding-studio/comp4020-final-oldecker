@@ -1,4 +1,5 @@
 ---
+import AppHead from "../../../components/AppHead.astro";
 // A house's "past walls" gallery: every pixel-canvas snapshot taken when a
 // wipe-the-wall vote passed (src/lib/wallvote.ts), most recent first. Same
 // membership gate as the house page itself --- a non-member gets the same
@@ -34,6 +35,7 @@ const gallery = galleryFor(house.id);
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <AppHead />
     <title>past walls · {house.name} · the board</title>
     <style>
       main {
