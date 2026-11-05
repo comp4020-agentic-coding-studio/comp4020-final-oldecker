@@ -1278,3 +1278,52 @@ turnout guard once its window has passed, while yes-beats-no with 2+ yes
 votes passes the same way; a live SSE stream across two ballots and a quick
 pass showed `wall_vote_update` firing after each ballot and `wall_wiped`
 firing exactly once, immediately before the vote's own `passed` update.
+
+## Tap a photo to see it properly
+
+Post photos only ever showed as 96px squares, cropped with `object-fit:
+cover`, so a tall or wide photo was mostly hidden. Now tapping one opens it
+full-screen over a dimmed backdrop, as large as fits the viewport with
+`object-fit: contain`, so nothing's cropped.
+
+**Shape.** One hidden dialog per page (`src/components/Lightbox.astro`,
+included once on the house page) and one script, `src/scripts/lightbox.ts`,
+listening on `document` --- the same delegated-click shape `delete-post.ts`
+already uses, so a post that arrives or re-renders after load opens here
+without anything re-binding. Each thumbnail is now a `.post-photo` button
+wrapping the same `<img>`, which is what makes it reachable by keyboard at
+all; it carries `data-full` with the photo's `/uploads/` URL. There's no
+separate full-size file to point at --- the browser already shrinks uploads
+to 1600px before they leave it (`compress-image.ts`), so the thumbnail's own
+source *is* the full-size one. The set of photos you can step through is
+read off the clicked thumbnail's own `.post-images` at open time, so it's
+always that post's photos only, never the whole feed's.
+
+**Getting around.** Prev/next buttons, arrow keys and a horizontal swipe all
+wrap around, with a "2 / 3" counter (both hidden for a single photo). Esc,
+the close button, tapping the backdrop, or swiping down all close it, and
+focus goes back to the thumbnail that opened it. Body scroll is locked while
+it's open; Tab is trapped on the dialog's visible controls. The backdrop is
+a near-black dim in both modes on purpose --- a photo reads best against
+dark --- while the buttons and counter sit on `--card`/`--ink` so they still
+follow the theme. On phones the arrows drop to the bottom edge so they're
+not sitting on the photo.
+
+**Display-only.** Nothing here writes: no new route, no schema change, no
+posts or uploads touched. So there's no new spec test either --- the
+server-observable bit (the photo's URL in the HTML) was already there.
+
+**How it was verified:** `pnpm typecheck` clean (0 errors, 0 warnings, the
+same baseline hint); `pnpm build`; the full spec against the built server on
+a scratch database, green twice. Then a throwaway Playwright script outside
+the repo signed up, posted three photos (one wide, one tall, one square) and
+drove the viewer at 1920×1080 and 390×844 in light and dark: opening on the
+second photo shows "2 / 3", arrow keys and the prev button move and wrap,
+five Tabs never leave the dialog, Esc and a backdrop click both close it
+with focus back on the opener and scroll unlocked, swipe-left and
+swipe-down work on the touch viewport, and the page never scrolls
+sideways. Replacing a post with a fresh clone after load still opened with
+just that post's photos. That run caught one real bug the first time round:
+a tall photo spilled off the bottom of the screen, because `max-height:
+100%` doesn't resolve inside an auto-sized grid row --- the image is now
+capped with explicit `calc(100dvh - 7rem)` / `calc(100vw - 1.5rem)` instead.

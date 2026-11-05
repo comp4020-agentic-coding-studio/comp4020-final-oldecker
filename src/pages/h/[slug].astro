@@ -12,6 +12,7 @@ import "../../styles/levels.css";
 import { and, desc, eq } from "drizzle-orm";
 import FrontDoorKnocks from "../../components/FrontDoorKnocks.astro";
 import LevelFlair from "../../components/LevelFlair.astro";
+import Lightbox from "../../components/Lightbox.astro";
 import { earnedToday, houseLeaderboard } from "../../lib/activity";
 import { bedroomCount, bedroomHtml } from "../../lib/bedroom";
 import { ACTION_HINTS, ACTION_WEIGHTS, formatWait, levelForPoints, levelLine, levelProgress, progressLine } from "../../lib/levels";
@@ -1668,6 +1669,18 @@ const CATEGORY_LABEL: Record<string, string> = {
         display: flex;
         gap: 0.4rem;
       }
+      .post-photo {
+        padding: 0;
+        border: 0;
+        background: none;
+        border-radius: 0.6rem;
+        cursor: zoom-in;
+        line-height: 0;
+      }
+      .post-photo:focus-visible {
+        outline: 3px solid var(--ink);
+        outline-offset: 2px;
+      }
       .post-images img {
         width: 96px;
         height: 96px;
@@ -2146,8 +2159,15 @@ const CATEGORY_LABEL: Record<string, string> = {
                   <p>{post.body}</p>
                   {images[post.id]?.length > 0 && (
                     <div class="post-images">
-                      {images[post.id].map((path) => (
-                        <img src={`/uploads/${path}`} alt="" loading="lazy" />
+                      {images[post.id].map((path, i) => (
+                        <button
+                          type="button"
+                          class="post-photo"
+                          data-full={`/uploads/${path}`}
+                          aria-label={`view photo ${i + 1} of ${images[post.id].length} full-screen`}
+                        >
+                          <img src={`/uploads/${path}`} alt="" loading="lazy" />
+                        </button>
                       ))}
                     </div>
                   )}
@@ -2231,6 +2251,7 @@ const CATEGORY_LABEL: Record<string, string> = {
               </ol>
             </section>
     </main>
+    <Lightbox />
     <script src="../../scripts/water-plant.ts" />
     <script src="../../scripts/compress-image.ts" />
     <script src="../../scripts/temperature-slider.ts" />
