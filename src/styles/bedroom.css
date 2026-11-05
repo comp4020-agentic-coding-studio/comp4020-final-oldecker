@@ -329,6 +329,15 @@
   font-size: 0.5rem;
   line-height: calc(0.8rem - 3px);
 }
+/* the weekly-streak flame: upper left too, since the "zz" floats off the
+   head's upper right */
+.bunk .lvl-streak {
+  right: auto;
+  left: -0.5rem;
+  top: -0.35rem;
+  height: 0.8rem;
+  font-size: 0.5rem;
+}
 .bunk-empty .bed-blanket,
 .bunk-empty .bed-blanket-fold {
   opacity: 0.55;

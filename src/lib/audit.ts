@@ -15,11 +15,11 @@
 // UUID) are enough to tell two rows apart at a glance without the full
 // 36-character id drowning out the rest of the line.
 import { eq } from "drizzle-orm";
-import { activityLevel } from "./activity";
+import { activityLevel, recordVisitOncePerDay } from "./activity";
 import { db } from "./db";
 import { broadcast } from "./events";
 import type { Person } from "./identity";
-import { ACTION_WEIGHTS } from "./levels";
+import type { ActivityLevel } from "./levels";
 import { auditLog, houseMembers } from "./schema";
 
 function shortId(id: string): string {
@@ -28,30 +28,50 @@ function shortId(id: string): string {
 
 export function logAction(person: Person | null, action: string, detail: string): void {
   // Levels are derived from this very table, so this is the one place that
-  // sees every point being earned. Only weighted actions can change a level;
-  // everything else skips the extra two reads.
-  const scores = person !== null && action in ACTION_WEIGHTS;
-  const before = scores ? activityLevel(person.id) : null;
+  // sees every point being earned. Any row of a person's can change their
+  // level now, not just the weighted actions: the first thing they do in a
+  // Canberra week (even a house_visit) extends their weekly streak, and the
+  // streak bonus is part of their points. So every person-attributed row
+  // reads the level before and after (a few indexed queries; ~15 people).
+  const before = person ? activityLevel(person.id) : null;
   db.insert(auditLog)
     .values({ personId: person?.id ?? null, action, detail })
     .run();
   const who = person ? `${person.name} (${shortId(person.id)})` : "system";
   console.log(`[audit] ${action} person=${who} detail=${detail}`);
-  if (person && before) announceLevel(person.id, before.points);
+  if (person && before) announceLevel(person.id, before);
 }
 
 // Levels are public within a house, so a change is pushed to every house the
 // person belongs to (not just the one they acted in): their badge, ring and
 // leaderboard row are on all of those pages. Most actions earn nothing (the
-// same action twice in a UTC day is worth it once), and then nothing is sent.
-function announceLevel(personId: string, pointsBefore: number): void {
+// same action twice in a UTC day is worth it once, and the week was already
+// counted), and then nothing is sent.
+function announceLevel(personId: string, before: ActivityLevel): void {
   const after = activityLevel(personId);
-  if (after.points === pointsBefore) return;
+  if (
+    after.points === before.points &&
+    after.streak === before.streak &&
+    after.countedThisWeek === before.countedThisWeek
+  )
+    return;
   const houseIds = db
     .select({ houseId: houseMembers.houseId })
     .from(houseMembers)
     .where(eq(houseMembers.personId, personId))
     .all();
-  for (const { houseId } of houseIds)
-    broadcast(houseId, { type: "level", data: { personId, level: after.level, points: after.points } });
+  const data = {
+    personId,
+    level: after.level,
+    points: after.points,
+    streak: after.streak,
+    countedThisWeek: after.countedThisWeek,
+  };
+  for (const { houseId } of houseIds) broadcast(houseId, { type: "level", data });
+}
+
+// A house page was opened: counts as showing up for the weekly streak.
+// Once per Canberra day per person; see recordVisitOncePerDay().
+export function logVisit(person: Person, houseSlug: string): void {
+  recordVisitOncePerDay(person.id, () => logAction(person, "house_visit", `house=${houseSlug}`));
 }

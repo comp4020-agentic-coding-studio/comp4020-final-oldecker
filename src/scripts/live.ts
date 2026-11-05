@@ -87,12 +87,14 @@ source.addEventListener("party_left", (e) => {
 // action): their badge, ring and leaderboard row, and if it's you, your
 // progress bar and maybe a level-up toast. See level-dom.ts.
 source.addEventListener("level", (e) => {
-  const { personId, level, points } = JSON.parse((e as MessageEvent).data) as {
+  const { personId, level, points, streak, countedThisWeek } = JSON.parse((e as MessageEvent).data) as {
     personId: string;
     level: number;
     points: number;
+    streak: number;
+    countedThisWeek: boolean;
   };
-  applyLevel(personId, level, points);
+  applyLevel(personId, level, points, streak, countedThisWeek);
 });
 
 source.addEventListener("party_snapshot", (e) => {

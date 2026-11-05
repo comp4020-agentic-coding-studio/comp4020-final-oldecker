@@ -148,6 +148,9 @@
   --lvl-5b: #6a3fc0;
   --lvl-badge-ink: #ffffff;
   --lvl-track: #efe8de;
+  /* weekly streak flame pill: white on it 5.2:1, it on --card 5.2:1 */
+  --streak: #c2410c;
+  --streak-ink: #ffffff;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -274,6 +277,9 @@
     --lvl-5b: #b9a0ff;
     --lvl-badge-ink: #1a1b26;
     --lvl-track: #2f3450;
+    /* Tokyo Night orange: dark ink on it 8.4:1, it on --card 7.2:1 */
+    --streak: #ff9e64;
+    --streak-ink: #1a1b26;
   }
 }
 * {

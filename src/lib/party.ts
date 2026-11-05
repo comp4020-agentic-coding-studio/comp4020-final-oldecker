@@ -118,7 +118,7 @@ export function partyRoomSnapshot(houseId: number): PartyGuest[] {
     .all();
   // Everyone's badge in one grouped query, not one per guest.
   const levels = levelsFor(rows.map((r) => r.personId));
-  return rows.map((r) => ({ ...r, level: levels.get(r.personId)?.level ?? 1 }));
+  return rows.map((r) => ({ ...r, level: levels.get(r.personId)?.level ?? 1, streak: levels.get(r.personId)?.streak ?? 0 }));
 }
 
 // Which houses this person is currently partying in --- used to refresh

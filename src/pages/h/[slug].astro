@@ -15,9 +15,10 @@ import FrontDoorKnocks from "../../components/FrontDoorKnocks.astro";
 import PushToggle from "../../components/PushToggle.astro";
 import LevelFlair from "../../components/LevelFlair.astro";
 import Lightbox from "../../components/Lightbox.astro";
+import { logVisit } from "../../lib/audit";
 import { earnedToday, houseLeaderboard } from "../../lib/activity";
 import { bedroomCount, bedroomHtml } from "../../lib/bedroom";
-import { ACTION_HINTS, ACTION_WEIGHTS, formatWait, levelForPoints, levelLine, levelProgress, progressLine } from "../../lib/levels";
+import { ACTION_HINTS, ACTION_WEIGHTS, formatWait, levelForPoints, levelLine, levelProgress, progressLine, streakLine, FLAME_ICON } from "../../lib/levels";
 import { renderAvatarSvg } from "../../lib/face";
 import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../../lib/canvas";
 import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../../lib/canvas-meta";
@@ -56,6 +57,11 @@ const house = maybeHouse;
 
 // "/" sends you back to whichever house you last opened.
 setLastHouse(person.id, house.id);
+
+// Opening the house counts as showing up for the weekly streak (once a
+// Canberra day; PROCESS.md, "Weekly streaks, not daily ones"). Before any
+// level is read below, so this visit is already in them.
+logVisit(person, house.slug);
 
 const sort = Astro.url.searchParams.get("sort") === "extreme" ? "extreme" : "new";
 
@@ -183,7 +189,7 @@ const initialCorridor = presentNow.filter((p) => p.personId !== person.id && !pa
 // in the corridor and party room are always members, so the presence and
 // party snapshots above already carry the same numbers.
 const leaderboard = houseLeaderboard(house.id);
-const levelById = new Map(leaderboard.map((r) => [r.personId, r.level]));
+const levelById = new Map(leaderboard.map((r) => [r.personId, r]));
 
 // The bedroom: every member, online or not. Awake = in the house right now
 // (the same presence the corridor shows), and you always are, since you're
@@ -191,7 +197,7 @@ const levelById = new Map(leaderboard.map((r) => [r.personId, r.level]));
 // rebuild the bunks live from presence events with the same bedroomHtml().
 // Each sleeper carries their level so the bunk shows the same badge and ring
 // as the corridor and party room (asleep members included).
-const members = membersOf(house.id).map((m) => ({ ...m, level: levelById.get(m.personId) ?? 1 }));
+const members = membersOf(house.id).map((m) => ({ ...m, level: levelById.get(m.personId)?.level ?? 1, streak: levelById.get(m.personId)?.streak ?? 0 }));
 const awakeIds = presentNow.map((p) => p.personId);
 // "<" escaped so no name can close the <script> tag it sits in
 const asJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
@@ -219,7 +225,8 @@ const lastPixelPlace = db
   .orderBy(desc(auditLog.createdAt))
   .limit(1)
   .get();
-const myActivity = levelForPoints(leaderboard.find((r) => r.personId === person.id)?.points ?? 0);
+const myRow = leaderboard.find((r) => r.personId === person.id);
+const myActivity = levelForPoints(myRow?.points ?? 0, myRow?.streak ?? 0, myRow?.countedThisWeek ?? false);
 const myProgress = levelProgress(myActivity.points);
 // Hints for the progress bar: what each action is worth, and which ones
 // have already scored today (a repeat today earns nothing).
@@ -1767,9 +1774,10 @@ const CATEGORY_LABEL: Record<string, string> = {
                     data-name={person.name}
                     data-avatar={person.avatar}
                     data-level={myActivity.level}
+                    data-streak={myActivity.streak}
                     hidden={inPartyRoom}
                   >
-                    <LevelFlair level={myActivity.level}>
+                    <LevelFlair level={myActivity.level} streak={myActivity.streak}>
                       <span class="party-avatar-circle you-circle">
                         <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(person.avatar)} />
                       </span>
@@ -1784,9 +1792,10 @@ const CATEGORY_LABEL: Record<string, string> = {
                         data-name={p.name}
                         data-avatar={p.avatar}
                         data-level={p.level}
+                        data-streak={p.streak}
                         title={`${p.name} · level ${p.level}`}
                       >
-                        <LevelFlair level={p.level}>
+                        <LevelFlair level={p.level} streak={p.streak}>
                           <span class="party-avatar-circle">
                             <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(p.avatar)} />
                           </span>
@@ -1882,7 +1891,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                         data-own={g.personId === person.id ? "true" : undefined}
                         title={`${g.name} · level ${g.level}`}
                       >
-                        <LevelFlair level={g.level}>
+                        <LevelFlair level={g.level} streak={g.streak}>
                           <span class="party-avatar-circle">
                             <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(g.avatar)} />
                           </span>
@@ -2082,6 +2091,8 @@ const CATEGORY_LABEL: Record<string, string> = {
                 data-level={myActivity.level}
                 data-points={myActivity.points}
                 data-person-id={person.id}
+                data-streak={myActivity.streak}
+                data-counted-this-week={myActivity.countedThisWeek ? "true" : "false"}
               >
                 <div class="lvl-progress-head">
                   <strong id="level-progress-title">
@@ -2099,6 +2110,10 @@ const CATEGORY_LABEL: Record<string, string> = {
                 >
                   <div class="lvl-bar-fill" style={`width:${(myProgress.fraction * 100).toFixed(1)}%`}></div>
                 </div>
+                <p class={myActivity.countedThisWeek ? "lvl-streak-line counted" : "lvl-streak-line"} id="level-streak">
+                  <span class="lvl-streak-flame" aria-hidden="true" set:html={FLAME_ICON} />
+                  <span id="level-streak-text">{streakLine(myActivity.streak, myActivity.countedThisWeek)}</span>
+                </p>
                 <ul class="lvl-hints" id="level-hints">
                   {myHints.map((h) => (
                     <li class={h.done ? "done" : undefined} data-action={h.action}>
@@ -2108,7 +2123,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                   ))}
                 </ul>
                 <p class="lvl-hint-note">
-                  each kind of thing counts once a day, over the last 7 days. A bit of everything, most days, climbs fastest.
+                  each kind of thing counts once a day, over the last 7 days. Showing up at all in a week (even just opening the board) keeps your weekly streak going: +1 pt a week from 2 weeks on, up to +8.
                 </p>
               </div>
             </div>
@@ -2228,7 +2243,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                 points (ties share a rank); live via level-dom.ts. */}
             <section class="lb" id="leaderboard" aria-labelledby="leaderboard-title">
               <h2 id="leaderboard-title">🏅 who's been around</h2>
-              <p class="lb-hint">levels from the last 7 days in {house.name}. Badges show on everyone's avatar.</p>
+              <p class="lb-hint">levels from the last 7 days in {house.name}. Badges show on everyone's avatar. The flame is a weekly streak: weeks in a row with at least one visit.</p>
               <ol class="lb-list" id="leaderboard-list">
                 {leaderboard.map((r) => (
                   <li
@@ -2236,9 +2251,10 @@ const CATEGORY_LABEL: Record<string, string> = {
                     data-person-id={r.personId}
                     data-points={r.points}
                     data-name={r.name}
+                    data-streak={r.streak}
                   >
                     <span class="lb-rank">{r.rank}</span>
-                    <LevelFlair level={r.level}>
+                    <LevelFlair level={r.level} streak={r.streak}>
                       <span class="lb-avatar">
                         <svg viewBox="0 0 64 64" aria-hidden="true" set:html={renderAvatarSvg(r.avatar)} />
                       </span>

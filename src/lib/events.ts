@@ -19,6 +19,7 @@ export interface PresenceEntry {
   name: string;
   avatar: string;
   level: number;
+  streak: number;
 }
 
 export interface PartyGuestEntry {
@@ -27,6 +28,7 @@ export interface PartyGuestEntry {
   avatar: string;
   expiresAt: number;
   level: number;
+  streak: number;
 }
 
 export type LiveEvent =
@@ -51,14 +53,14 @@ export type LiveEvent =
   | { type: "knock_answered"; data: { id: number; name: string; outcome: string; by: string | null } }
   | { type: "knock_snapshot"; data: { knocks: KnockEntry[] } }
   // someone new moved in: the bedroom grows a bunk for them
-  | { type: "member_joined"; data: { personId: string; name: string; avatar: string; level: number } }
+  | { type: "member_joined"; data: { personId: string; name: string; avatar: string; level: number; streak: number } }
   // PRIVATE: only ever sent with sendToPerson(), never broadcast --- see below
   | { type: "lieb"; data: { id: number; fromPersonId: string; fromName: string; createdAt: number } }
   // Someone in this house earned points: their badge, ring and leaderboard
   // row change live for everyone with the house open (and their own tab
   // uses it for the progress bar and the level-up toast). Sent by
   // logAction() --- see src/lib/audit.ts.
-  | { type: "level"; data: { personId: string; level: number; points: number } }
+  | { type: "level"; data: { personId: string; level: number; points: number; streak: number; countedThisWeek: boolean } }
   // A vote to wipe the wall: a ballot cast, or the vote closing (quick pass,
   // or the 3-day window). Carries the tally so every open tab's panel
   // updates without asking --- see src/lib/wallvote.ts.
@@ -161,6 +163,7 @@ export function presenceSnapshot(houseId: number): PresenceEntry[] {
     name,
     avatar,
     level: levels.get(personId)?.level ?? 1,
+    streak: levels.get(personId)?.streak ?? 0,
   }));
 }
 

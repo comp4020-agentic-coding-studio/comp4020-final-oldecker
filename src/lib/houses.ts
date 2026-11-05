@@ -118,10 +118,11 @@ export function addMember(houseId: number, personId: string): boolean {
       .from(people)
       .where(eq(people.id, personId))
       .get();
+    const lv = activityLevel(personId);
     if (who)
       broadcast(houseId, {
         type: "member_joined",
-        data: { personId, ...who, level: activityLevel(personId).level },
+        data: { personId, ...who, level: lv.level, streak: lv.streak },
       });
   }
   return !!row;

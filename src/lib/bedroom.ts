@@ -25,6 +25,8 @@ export interface Sleeper {
   avatar: string;
   // public activity level, for the same badge and ring the corridor shows
   level?: number;
+  // weekly streak, for the flame next to the badge (0 or 1 shows nothing)
+  streak?: number;
 }
 
 // The bed itself, in a 128x150 box (1 unit = --u in bedroom.css): two posts,
@@ -69,7 +71,7 @@ function bunkHtml(who: Sleeper | undefined, bunk: "top" | "bottom"): string {
   const lv = clampLevel(who.level ?? 1);
   // The head sits inside the level flair (badge + ring), the same wrapper
   // the corridor and party chips use, so level-dom.ts updates it live.
-  const head = flairHtml(lv, `<span class="bunk-head"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(who.avatar)}</svg></span>`);
+  const head = flairHtml(lv, `<span class="bunk-head"><svg viewBox="0 0 64 64" aria-hidden="true">${renderAvatarSvg(who.avatar)}</svg></span>`, who.streak ?? 0);
   return `<div class="bunk bunk-${bunk}" data-person-id="${escapeHtml(who.personId)}" data-name="${escapeHtml(who.name)}" data-state="asleep" title="${escapeHtml(`${who.name} · level ${lv} · asleep`)}">${BEDDING}${head}<span class="bunk-name">${escapeHtml(who.name)}</span><span class="bunk-z" aria-hidden="true">z<i>z</i></span></div>`;
 }
 

@@ -93,6 +93,36 @@
   background: linear-gradient(135deg, var(--lvl-5), var(--lvl-5b));
 }
 
+/* The weekly streak (PROCESS.md, "Weekly streaks, not daily ones"): a
+   small flame pill on the avatar's upper right, opposite corner from the
+   level badge so the two never overlap. Only there from a 2-week streak. */
+.lvl-streak {
+  position: absolute;
+  right: -0.45rem;
+  top: -0.3rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.05rem;
+  height: 0.9rem;
+  padding: 0 0.22rem 0 0.15rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--card);
+  background: var(--streak);
+  color: var(--streak-ink);
+  font-size: 0.55rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.lvl-streak svg {
+  width: 0.45rem;
+  height: 0.52rem;
+  fill: currentColor;
+}
+
 /* the moment someone's level goes up (anyone's, seen live): a little pop */
 .lvl-flair.lvl-bump {
   animation: lvl-bump 0.7s ease;
@@ -168,6 +198,28 @@
 }
 .lvl-progress[data-level="5"] .lvl-bar-fill {
   background: linear-gradient(90deg, var(--lvl-5), var(--lvl-5b));
+}
+/* your own streak, under the bar: what keeps it alive this week */
+.lvl-streak-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: 0 0 0.45rem;
+  color: var(--text-muted);
+}
+.lvl-streak-line.counted {
+  color: var(--ink);
+}
+.lvl-streak-flame {
+  flex: none;
+  display: inline-flex;
+  margin-top: 0.1rem;
+  color: var(--streak);
+}
+.lvl-streak-flame svg {
+  width: 0.7rem;
+  height: 0.82rem;
+  fill: currentColor;
 }
 .lvl-hints {
   margin: 0;
