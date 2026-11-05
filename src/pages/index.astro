@@ -1,4 +1,5 @@
 ---
+import AppHead from "../components/AppHead.astro";
 // The root URL. Logged out: the landing card (a 200, which is what
 // spec/invariants.test.ts and the deploy check read --- they fetch with no
 // cookie). Logged in: straight to the house you last opened, or out to the
@@ -21,6 +22,7 @@ if (person) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <AppHead />
     <title>the board</title>
     <style>
       main {

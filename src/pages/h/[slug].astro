@@ -1,4 +1,5 @@
 ---
+import AppHead from "../../components/AppHead.astro";
 // One house's board: its feed, plant, wall, party room, and the corridor
 // everyone currently in the house stands in. Every query below is scoped to
 // this house, and nothing is read until membership has been checked --- a
@@ -11,6 +12,7 @@ import "../../styles/lieb.css";
 import "../../styles/levels.css";
 import { and, desc, eq } from "drizzle-orm";
 import FrontDoorKnocks from "../../components/FrontDoorKnocks.astro";
+import PushToggle from "../../components/PushToggle.astro";
 import LevelFlair from "../../components/LevelFlair.astro";
 import { earnedToday, houseLeaderboard } from "../../lib/activity";
 import { bedroomCount, bedroomHtml } from "../../lib/bedroom";
@@ -243,6 +245,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <AppHead />
     <title>{house.name} · the board</title>
     <style>
       main {
@@ -1697,6 +1700,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                 <button type="button" id="invite-button" class="pill" aria-expanded="false" aria-controls="invite-panel">
                   invite
                 </button>
+                <PushToggle />
                 <form method="post" action="/api/logout">
                   <button type="submit" class="pill quiet" title={`logged in as ${person.name}`}>log out</button>
                 </form>

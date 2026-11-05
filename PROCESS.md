@@ -1278,3 +1278,101 @@ turnout guard once its window has passed, while yes-beats-no with 2+ yes
 votes passes the same way; a live SSE stream across two ballots and a quick
 pass showed `wall_vote_update` firing after each ballot and `wall_wiped`
 firing exactly once, immediately before the vote's own `passed` update.
+
+## Phone notifications: three events, and nothing on a timer
+
+Everything live in this app so far only reaches you if the house is open in a
+tab. That's fine for presence --- being there is the point --- but a heart, a
+knock or a friend's post mostly happen while your phone is in your pocket, and
+the knock in particular just sits at the door until someone happens to look.
+So the board now sends a phone notification for exactly three things: someone
+sent you an "ich hab dich lieb", someone's knocking on a house you live in, or
+someone posted in a house you live in.
+
+**Why Web Push, not an app or email.** It's the only option that fits the
+stack as it already is: no native app to build, no email provider to sign up
+to, no third-party service holding anyone's data --- the browser vendor's own
+push service carries an encrypted payload it can't read, and the server just
+needs a VAPID key pair (`src/lib/push.ts`, on the `web-push` package). A new
+`push_subscriptions` table holds one row per device that said yes, keyed on
+the push endpoint so the same phone subscribing twice is the same row; the
+migration (`drizzle/0010_soft_harry_osborn.sql`) only creates that table and
+its two indexes. When the push service answers 404 or 410, that device's
+subscription is gone for good and its row is deleted --- delivery plumbing,
+never content. Nothing in this feature touches a post, a photo or anything
+else anyone made.
+
+**The iPhone caveat.** iOS Safari only has the Push API inside a web app
+that's been added to the home screen --- in an ordinary Safari tab it simply
+isn't there. That's why every page now links a `manifest.webmanifest`
+(`display: standalone`, 192 and 512 icons) and an apple-touch-icon, and why
+the opt-in control, on an iPhone that isn't running the board as an
+installed app, doesn't offer a button it can't honour: it says "On iPhone:
+Share → Add to Home Screen, then open from there to turn on notifications"
+instead. Elsewhere it shows on, off, blocked (the browser said no, and only
+its own settings can undo that) or unsupported. The permission prompt is only
+ever triggered by a click on that control, which every browser now requires
+and iOS insists on. It sits in the house bar next to "invite" and on the
+street, since notifications belong to you and your device, not to one house.
+
+**Why event-only, with no "you haven't been in for a while" nudges.**
+`fly.toml` scales the one machine to zero between visits. A scheduler living
+in the process would be asleep exactly when it was supposed to fire --- the
+same reason the party room and the wipe vote keep a read-time sweep as the
+real mechanism rather than trusting a `setTimeout`. A nudge needs something
+awake to send it; an event already has a request in hand. And a timed nudge
+for a 15-person board between friends is closer to a guilt trip than a
+feature.
+
+**Don't buzz someone who's already looking.** Before sending, `push.ts` asks
+the presence map in `src/lib/events.ts` (the same one the corridor is drawn
+from, via a new `isPresent()`) whether the recipient has that house open in
+any tab right now. If they do, the page has already shown them the heart or
+the knock or the new post live, and a phone buzz on top of it would just be
+the same news twice. A heart only falls back to push when `sendToPerson()`
+says it didn't land live anyway.
+
+**One new-post buzz per person, per house, per 30 minutes.** Knocks are
+already one per knocker (a second knock is the same knock), and hearts are
+already one a day per pair, so neither needs extra limiting. Posts have no
+such limit: someone sharing five photos from a trip as five posts would be
+five buzzes. So `pushNewPost()` remembers when it last pushed each recipient
+about each house, and skips anyone pushed in the last 30 minutes ---
+"something's happening in the house" is the useful news, not a running count.
+It's an in-memory map, the same trade `ratelimit.ts` already makes: one
+machine, and a restart forgetting it costs at most one extra buzz each.
+
+**Never in the way of the request that caused it.** Every send is
+fire-and-forget: the route has its response on the way before any push is
+attempted to finish, and every failure (a dead endpoint, the push service
+being down, a malformed key) ends in a `console.error`, never in a failed
+post or a failed heart. Without `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` in the
+environment the whole feature is a no-op and the opt-in isn't rendered ---
+which is how local dev, CI and the spec run, and why no key is in the repo.
+The keys live in Fly secrets. Subscribing and unsubscribing go through
+`logAction` like every other mutation (`push_subscribe`/`push_unsubscribe`).
+
+**How it was verified:** `pnpm typecheck` (0 errors, 0 warnings, the existing
+`execCommand` hint only) and `pnpm build`; the full spec twice against the
+built server on a scratch database, green both times, including a new
+`spec/push.test.ts` (subscribe and unsubscribe both 401 when logged out, the
+same endpoint subscribed twice reports `created: false` the second time,
+someone else's endpoint can't be removed, a non-https endpoint is refused,
+`/sw.js` served as JavaScript and `/manifest.webmanifest` as a manifest with
+real 192/512 PNGs). Sending itself was checked two ways with throwaway VAPID
+keys kept outside the repo. First, a disposable script stood up a fake HTTPS
+push service and held the subscription's private keys, so it could decrypt
+what actually arrived: a heart to an offline member arrived once with the
+right title, body and house URL; a post pushed the other member and not the
+author, and a second post straight after pushed nobody; a knock pushed the
+offline member and not the one with an SSE stream open; a heart to someone
+online went live with no push at all; and a 410 from the push service deleted
+that row while the heart's own request still came back 200. Second, a real
+Chrome (Playwright, installed outside the repo, with notification permission
+granted) clicked "turn on notifications" on the street page, which subscribed
+through Google's actual push service; a heart sent from another account
+arrived through it and the service worker's `push` handler showed "ich hab
+dich lieb" with the house's URL attached; clicking again unsubscribed both the
+browser and the server row. Not verified: a real iPhone, and tapping a
+notification to open the house (`notificationclick`), which a headless browser
+has no way to do.

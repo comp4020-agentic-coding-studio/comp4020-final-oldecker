@@ -1,4 +1,5 @@
 ---
+import AppHead from "../../components/AppHead.astro";
 // Publishes README.md at /readme/, rendered from the file read at request
 // time (not bundled at build time), so an edit to README.md shows up on the
 // next request with no rebuild. spec/invariants.test.ts checks every heading
@@ -20,6 +21,7 @@ const html = marked.parse(source, { async: false });
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <AppHead />
     <title>About</title>
   </head>
   <body>
