@@ -1364,6 +1364,18 @@ ever triggered by a click on that control, which every browser now requires
 and iOS insists on. It sits in the house bar next to "invite" and on the
 street, since notifications belong to you and your device, not to one house.
 
+**The Brave caveat.** Brave is Chromium underneath, so it implements the same
+Push API Chrome does --- subscribing on Brave succeeds and the server gets a
+row like any other. But Brave ships with Google's push delivery turned off by
+default (`brave://settings/privacy` → "Use Google services for push
+messaging"), on privacy grounds: that's the channel Chromium browsers use to
+wake a page for a push, same as Firefox or desktop Safari use their own. With
+it off, a push the server sends is accepted by Brave's install but never
+delivered to the device --- no error reaches `push.ts`, since the failure is
+entirely on the receiving end, so there's nothing the server could detect or
+warn about. Someone on Brave who turns notifications on and never sees one
+should flip that setting on, not assume the board is broken.
+
 **Why event-only, with no "you haven't been in for a while" nudges.**
 `fly.toml` scales the one machine to zero between visits. A scheduler living
 in the process would be asleep exactly when it was supposed to fire --- the
@@ -1422,9 +1434,11 @@ granted) clicked "turn on notifications" on the street page, which subscribed
 through Google's actual push service; a heart sent from another account
 arrived through it and the service worker's `push` handler showed "ich hab
 dich lieb" with the house's URL attached; clicking again unsubscribed both the
-browser and the server row. Not verified: a real iPhone, and tapping a
-notification to open the house (`notificationclick`), which a headless browser
-has no way to do.
+browser and the server row. Not verified by that pass: a real iPhone, and
+tapping a notification to open the house (`notificationclick`), which a
+headless browser has no way to do. The iPhone case was checked for real
+afterwards: a home-screen install subscribed, and a manually triggered push
+reached Apple's push service and showed up on the device.
 
 ## Weekly streaks, not daily ones
 

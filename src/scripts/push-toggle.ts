@@ -11,6 +11,14 @@
 // form-encoded like every other mutation here.
 
 const IOS_HINT = "On iPhone: Share → Add to Home Screen, then open from there to turn on notifications.";
+const BRAVE_HINT =
+  "Brave blocks Google's push delivery by default, so this can say \"on\" but never actually buzz. " +
+  "Turn on brave://settings/privacy → \"Use Google services for push messaging\" to fix it.";
+
+function isBrave(): boolean {
+  const nav = navigator as Navigator & { brave?: { isBrave: () => Promise<boolean> } };
+  return typeof nav.brave?.isBrave === "function";
+}
 
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padded = (base64 + "=".repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
@@ -90,6 +98,15 @@ async function setup(root: HTMLElement): Promise<void> {
     return;
   }
 
+  // Brave subscribes fine but drops the actual push silently unless the
+  // person has turned Google's delivery channel back on --- there's no
+  // error for push.ts to see, so the only thing that can catch this is
+  // telling the person up front while they're looking at "on".
+  const showOn = () => {
+    show("on");
+    if (isBrave()) say(BRAVE_HINT);
+  };
+
   const refresh = async () => {
     if (Notification.permission === "denied") return show("blocked");
     const sub = await reg.pushManager.getSubscription();
@@ -97,7 +114,7 @@ async function setup(root: HTMLElement): Promise<void> {
     // repairs a row removed after a 410 or a different login on this device).
     if (sub) {
       await sendToServer(sub).catch(() => {});
-      return show("on");
+      return showOn();
     }
     show("off");
   };
@@ -127,7 +144,7 @@ async function setup(root: HTMLElement): Promise<void> {
         say("couldn't turn them on just now, try again");
         return show("off");
       }
-      show("on");
+      showOn();
     } catch {
       say("couldn't change notifications just now, try again");
       await refresh().catch(() => show("off"));
