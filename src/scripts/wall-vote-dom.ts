@@ -75,7 +75,7 @@ export function renderNone(resultNote?: string): void {
   if (panel) {
     panel.dataset.status = "none";
     const summary = document.querySelector<HTMLElement>("#wall-vote-summary");
-    if (summary) summary.textContent = "no vote to wipe the wall is open right now --- voting below starts one";
+    if (summary) summary.textContent = "tired of the wall? vote to wipe it:";
   }
   yesBtn?.setAttribute("aria-pressed", "false");
   noBtn?.setAttribute("aria-pressed", "false");

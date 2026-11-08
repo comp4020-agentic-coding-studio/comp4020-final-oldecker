@@ -1588,3 +1588,35 @@ is narrower: missing a week here costs only a capped bonus, and nothing
 compares people except the leaderboard. That leaderboard, and public levels
 generally, are now the decision I'm least confident about, and the README
 says so.
+
+## The wipe-vote panel shrinks to a line when there's nothing to decide
+
+Feedback after using it: the always-visible wipe-the-wall panel was costing
+real space on the house page even on the nearly-all-the-time where no vote is
+open and there's nothing to decide. The original design (PROCESS.md's own
+"Vote to wipe the wall" section) deliberately made voting itself the only way
+to start one, with no separate "start" control, but it paid for that by
+giving the idle state the same padded, bordered card as the live one.
+
+The fix keeps the no-separate-start-control idea and just changes how much
+room the two states cost. Idle, `.wall-vote` is a single line --- no border,
+no background, no padding --- with "yes, wipe it" / "no, keep it" as small
+underlined inline text-links instead of standing pill buttons, so the whole
+thing reads as one sentence ("tired of the wall? vote to wipe it: yes, wipe
+it no, keep it") tucked under the wall's cooldown line. The moment a vote is
+actually open, `.wall-vote[data-status="open"]` takes over: the dashed
+`--danger` border, the tally, the countdown and real pill buttons all come
+back, because that's the moment that's actually worth the visual weight ---
+the wall being at risk is louder than "available", exactly as the original
+section argued, just scoped to when it's true. `wall-vote-dom.ts`'s
+`renderNone()` carries the same idle copy, so a vote resolving over SSE
+collapses the panel back to the same one-liner without a reload.
+
+**Verified:** `pnpm typecheck` (0/0) and `pnpm build` clean; the full spec
+twice on a scratch database (83/83, including updating
+`wallvote.test.ts`'s assertion on the idle copy to match); a throwaway
+Playwright check at 1920×1080 and 390×844, light and dark, confirmed the
+idle line sits flush under the cooldown text with no stray card, and that
+opening a real vote (two members, one "yes") grows the full card with a
+working tally and countdown in all four combinations, no overflow at either
+width.

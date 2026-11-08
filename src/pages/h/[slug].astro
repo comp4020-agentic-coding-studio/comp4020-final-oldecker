@@ -643,51 +643,74 @@ const CATEGORY_LABEL: Record<string, string> = {
       }
 
       /* --- vote to wipe the wall -----------------------------------------
-         A small, always-visible panel under the wall's own controls: the
-         current tally and time remaining if a vote's open, or an invitation
-         to start one if not --- voting yes or no IS how a vote starts, so
-         there's no separate "start" control. Dashed/muted when nothing's
-         open, switching to the --danger treatment (same token the app's
-         other destructive-ish states use) once a vote is actually live, so
-         the wall being at risk of wiping is visually louder than "available". */
+         Idle (no vote open): one quiet line --- no card, no padded box, no
+         standing pill buttons --- since most of the time there's nothing to
+         decide and it shouldn't cost more room than a caption. Voting yes or
+         no is still what starts a vote (no separate "start" control): the
+         idle line's yes/no are small inline text-links rather than buttons,
+         so the whole thing reads as one sentence. Only once a vote is
+         actually open does it grow into a bordered card with a tally, a
+         countdown and real pill buttons --- the wall being at risk of
+         wiping is the moment worth the extra space, not "available". */
       .wall-vote {
-        margin-top: 0.9rem;
-        padding: 0.7rem 0.8rem;
-        border: 1px dashed var(--border);
-        border-radius: 0.7rem;
-        background: transparent;
-        transition:
-          border-color 0.2s ease,
-          background 0.2s ease;
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.5rem;
+        font-size: 0.78rem;
+        opacity: 0.7;
       }
       .wall-vote[data-status="open"] {
+        display: block;
+        margin-top: 0.9rem;
+        padding: 0.7rem 0.8rem;
         border: 1px dashed var(--danger);
+        border-radius: 0.7rem;
         background: var(--danger-bg);
-      }
-      .wall-vote-summary {
-        margin: 0 0 0.5rem;
-        font-size: 0.85rem;
-        opacity: 0.85;
-      }
-      .wall-vote[data-status="open"] .wall-vote-summary {
+        font-size: 1rem;
         opacity: 1;
       }
+      .wall-vote-summary {
+        margin: 0;
+        font-size: inherit;
+      }
+      .wall-vote[data-status="open"] .wall-vote-summary {
+        margin: 0 0 0.5rem;
+        font-size: 0.85rem;
+      }
       .wall-vote-buttons {
-        display: flex;
-        gap: 0.5rem;
+        display: inline-flex;
+        gap: 0.4rem;
         flex-wrap: wrap;
+      }
+      .wall-vote[data-status="open"] .wall-vote-buttons {
+        display: flex;
       }
       .wall-vote-btn {
         font: inherit;
+        font-size: inherit;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        text-decoration: underline;
+        text-underline-offset: 0.15em;
+        cursor: pointer;
+      }
+      .wall-vote[data-status="open"] .wall-vote-btn {
         font-size: 0.8rem;
         padding: 0.35rem 0.9rem;
         border-radius: 999px;
         border: 1px solid var(--border);
         background: var(--card);
-        color: inherit;
-        cursor: pointer;
+        text-decoration: none;
       }
       .wall-vote-btn[aria-pressed="true"] {
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .wall-vote[data-status="open"] .wall-vote-btn[aria-pressed="true"] {
         border-color: var(--danger);
         background: var(--danger);
         color: var(--bg);
@@ -2051,7 +2074,9 @@ const CATEGORY_LABEL: Record<string, string> = {
                   a minimum-turnout bar. See src/lib/wallvote.ts and
                   PROCESS.md. Always visible --- there's nothing to "start":
                   voting yes or no is itself what opens the vote if none is
-                  open yet. */}
+                  open yet. Idle, it's one quiet line with yes/no as inline
+                  text-links; once a vote's open it grows into the full card
+                  (see the .wall-vote[data-status="open"] rules above). */}
               <div
                 class="wall-vote"
                 id="wall-vote"
@@ -2069,7 +2094,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                       <span id="wall-vote-time">closes in a few days</span>
                     </>
                   ) : (
-                    "no vote to wipe the wall is open right now --- voting below starts one"
+                    "tired of the wall? vote to wipe it:"
                   )}
                 </p>
                 <div class="wall-vote-buttons">

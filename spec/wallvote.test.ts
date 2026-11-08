@@ -210,7 +210,7 @@ it("a vote in one house doesn't show up or count towards another house's panel",
   // other's own house page still shows its own (empty) panel, unaffected
   const otherPage = await page(other);
   expect(otherPage).toContain('id="wall-vote"');
-  expect(otherPage).toContain("no vote to wipe the wall is open right now");
+  expect(otherPage).toContain("tired of the wall? vote to wipe it:");
   expect(otherPage).not.toContain('data-status="open"');
 
   // and host's house page shows its own vote as open
