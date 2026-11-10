@@ -20,7 +20,7 @@ import { earnedToday, houseLeaderboard } from "../../lib/activity";
 import { bedroomCount, bedroomHtml } from "../../lib/bedroom";
 import { ACTION_HINTS, ACTION_WEIGHTS, formatWait, levelForPoints, levelLine, levelProgress, progressLine, streakLine, FLAME_ICON } from "../../lib/levels";
 import { renderAvatarSvg } from "../../lib/face";
-import { CANVAS_SIZE, cooldownRemaining, PALETTE } from "../../lib/canvas";
+import { CANVAS_SIZE, cooldownRemaining, cooldownRingOffset, COOLDOWN_RING_CIRCUMFERENCE, COOLDOWN_RING_RADIUS, PALETTE } from "../../lib/canvas";
 import { canvasName, MAX_CANVAS_NAME_LENGTH } from "../../lib/canvas-meta";
 import { db } from "../../lib/db";
 import { presenceSnapshot } from "../../lib/events";
@@ -233,6 +233,12 @@ const myProgress = levelProgress(myActivity.points);
 const doneToday = new Set(earnedToday(person.id));
 const myHints = ACTION_HINTS.map((h) => ({ ...h, weight: ACTION_WEIGHTS[h.action] ?? 0, done: doneToday.has(h.action) }));
 const myCanvasCooldown = cooldownRemaining(lastPixelPlace?.createdAt ?? null, myActivity.cooldownSeconds);
+// The countdown ring's starting angle: how much of the wait is still left,
+// as a stroke-dashoffset, so a fresh page load mid-cooldown renders the ring
+// at the right position instead of always full or always empty (the client
+// script in pixel-canvas.ts takes over animating it from here).
+const myCanvasCooldownFraction = myActivity.cooldownSeconds > 0 ? myCanvasCooldown / myActivity.cooldownSeconds : 0;
+const myCanvasCooldownOffset = cooldownRingOffset(myCanvasCooldownFraction);
 const canvasDisplayName = canvasName(house.id);
 // The wipe-the-wall vote, if one's open right now --- see src/lib/wallvote.ts.
 const wallVote = wallVoteState(house.id, person.id);
@@ -620,11 +626,65 @@ const CATEGORY_LABEL: Record<string, string> = {
       .canvas-swatch[aria-pressed="true"] {
         border-color: var(--ink);
       }
+      /* the cooldown ring: a small SVG radial countdown (background track +
+         draining foreground arc) next to the level/cooldown-length text.
+         The ring is purely decorative (aria-hidden; see the SVG's own
+         attribute) --- the real information stays as text beside it, same
+         as before the ring existed, just shorter so it fits next to the
+         circle ("7m 32s"/"ready" rather than the full sentence). */
+      .cooldown-ring {
+        --lvl-c: var(--lvl-1);
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+      }
+      .cooldown-ring[data-level="2"] {
+        --lvl-c: var(--lvl-2);
+      }
+      .cooldown-ring[data-level="3"] {
+        --lvl-c: var(--lvl-3);
+      }
+      .cooldown-ring[data-level="4"] {
+        --lvl-c: var(--lvl-4);
+      }
+      .cooldown-ring[data-level="5"] {
+        --lvl-c: var(--lvl-5);
+      }
+      .cooldown-ring svg {
+        flex: none;
+        width: 2.25rem;
+        height: 2.25rem;
+        /* start the arc at 12 o'clock and drain clockwise */
+        transform: rotate(-90deg);
+      }
+      .cooldown-ring-track,
+      .cooldown-ring-fill {
+        fill: none;
+        stroke-width: 3;
+      }
+      .cooldown-ring-track {
+        stroke: var(--lvl-track);
+      }
+      .cooldown-ring-fill {
+        stroke: var(--lvl-c);
+        stroke-linecap: round;
+        /* the client script updates stroke-dashoffset every tick; no CSS
+           transition here --- a transition would lag a second behind each
+           JS write and visibly stutter instead of draining smoothly. */
+      }
+      .cooldown-ring-text {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+      }
       #canvas-cooldown,
       #canvas-level {
         margin: 0;
         font-size: 0.8rem;
         opacity: 0.7;
+      }
+      #canvas-cooldown {
+        font-variant-numeric: tabular-nums;
       }
       /* sits next to the wall's name, same muted-link treatment as the
          avatar-edit link below the bedroom */
@@ -2060,12 +2120,39 @@ const CATEGORY_LABEL: Record<string, string> = {
                     />
                   ))}
                 </div>
-                <p id="canvas-cooldown" data-cooldown={myCanvasCooldown}>
-                  {myCanvasCooldown > 0 ? `wait ${formatWait(myCanvasCooldown)} to place again` : "ready to place"}
-                </p>
-                <p id="canvas-level" data-cooldown-seconds={myActivity.cooldownSeconds}>
-                  {levelLine(myActivity.level, myActivity.cooldownSeconds)}
-                </p>
+                <div
+                  class="cooldown-ring"
+                  id="cooldown-ring"
+                  data-level={myActivity.level}
+                  data-cooldown={myCanvasCooldown}
+                  data-cooldown-length={myActivity.cooldownSeconds}
+                >
+                  <svg
+                    viewBox="0 0 36 36"
+                    width="36"
+                    height="36"
+                    aria-hidden="true"
+                  >
+                    <circle class="cooldown-ring-track" cx="18" cy="18" r={COOLDOWN_RING_RADIUS} />
+                    <circle
+                      class="cooldown-ring-fill"
+                      id="cooldown-ring-fill"
+                      cx="18"
+                      cy="18"
+                      r={COOLDOWN_RING_RADIUS}
+                      stroke-dasharray={COOLDOWN_RING_CIRCUMFERENCE}
+                      stroke-dashoffset={myCanvasCooldownOffset}
+                    />
+                  </svg>
+                  <div class="cooldown-ring-text">
+                    <p id="canvas-cooldown" data-cooldown={myCanvasCooldown}>
+                      {myCanvasCooldown > 0 ? formatWait(myCanvasCooldown) : "ready"}
+                    </p>
+                    <p id="canvas-level" data-cooldown-seconds={myActivity.cooldownSeconds}>
+                      {levelLine(myActivity.level, myActivity.cooldownSeconds)}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Vote to wipe the wall: any member can start or join one by
