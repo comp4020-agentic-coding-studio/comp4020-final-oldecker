@@ -43,10 +43,17 @@ export interface FaceConfig {
   gl: number; // glasses
   ex: number; // extras: hats, earrings, etc.
   of: number; // outfit colour (shirt, and hat/headband colour)
+  ec: number; // eye colour (tints the existing dark iris/pupil ink only --- see EYE STYLING above)
 }
 
+// ec was added after faces already existed in the live database (see
+// BACKWARD COMPATIBILITY below), so it must stay the LAST key: FACE_KEYS'
+// order has no storage meaning (serializeFace always writes keys in this
+// order so equal faces compare as equal strings), but keeping new keys
+// appended, never inserted, keeps this list's history readable as a log of
+// what was added when.
 export type FaceKey = keyof FaceConfig;
-export const FACE_KEYS: FaceKey[] = ["bg", "sk", "hc", "hs", "br", "ey", "mo", "bd", "gl", "ex", "of"];
+export const FACE_KEYS: FaceKey[] = ["bg", "sk", "hc", "hs", "br", "ey", "mo", "bd", "gl", "ex", "of", "ec"];
 export const MAX_AVATAR_LENGTH = 200;
 
 // --- option data -----------------------------------------------------------
@@ -79,21 +86,40 @@ const HAIRS: Array<{ base: string; dark: string }> = [
   { base: "#e0679c", dark: "#a8416f" },
   { base: "#3f6fd1", dark: "#274a99" },
   { base: "#7d52c9", dark: "#553391" },
+  // appended: more natural tones plus a couple more playful dyed ones
+  { base: "#2e2420", dark: "#19120f" }, // darkest brown (near-black but warmer than "black")
+  { base: "#8a6a43", dark: "#60491e" }, // dirty blonde
+  { base: "#6b7280", dark: "#454b57" }, // ash grey
+  { base: "#2ebf8f", dark: "#1a8a66" }, // mint green
 ];
-const HAIR_COLOUR_NAMES = ["black", "dark brown", "brown", "auburn", "ginger", "blonde", "silver", "pink", "blue", "purple"];
+const HAIR_COLOUR_NAMES = [
+  "black", "dark brown", "brown", "auburn", "ginger", "blonde", "silver", "pink", "blue", "purple",
+  "espresso brown", "dirty blonde", "ash grey", "mint green",
+];
 
 const OUTFITS = ["#2f6f9f", "#c1443b", "#3f7d3f", "#e3b23c", "#7a4bc2", "#2b2b33", "#ece6dc", "#d9619b"];
 const OUTFIT_NAMES = ["blue", "red", "green", "mustard", "purple", "black", "cream", "pink"];
 
-const HAIRSTYLE_NAMES = ["bald", "buzz", "short", "quiff", "long", "curly", "afro", "bun", "mullet", "receding", "thinning", "horseshoe", "shaved"];
+const HAIRSTYLE_NAMES = [
+  "bald", "buzz", "short", "quiff", "long", "curly", "afro", "bun", "mullet", "receding", "thinning", "horseshoe", "shaved",
+  // appended: never reorder/renumber the styles above (indices 0-12 are load-bearing)
+  "bob", "braids", "top knot", "mohawk", "waves",
+];
 const BROW_NAMES = ["none", "straight", "arched", "thick", "raised"];
 const EYE_NAMES = ["dots", "big", "happy", "sleepy", "wink", "tall"];
 const MOUTH_NAMES = ["smile", "grin", "neutral", "open", "smirk", "tongue", "sad"];
 const BEARD_NAMES = ["clean", "stubble", "moustache", "beard"];
 const GLASSES_NAMES = ["none", "round", "square", "shades", "tinted"];
-const EXTRA_NAMES = ["none", "beanie", "cap", "headband", "earrings", "flower", "headphones", "party hat"];
+const EXTRA_NAMES = ["none", "beanie", "cap", "headband", "earrings", "flower", "headphones", "party hat", "nose ring"];
 
-const INK = "#1c1410"; // eyes/brows ink, same on every skin (see header comment)
+const INK = "#1c1410"; // brows ink (and the eye-ink default, index 0), same on every skin (see header comment)
+
+// Eye colour: NOT a sclera/lighter eye-shape (see EYE STYLING above) --- these
+// tint the same dark ink marks eyes() already draws, with real, muted iris
+// hues rather than anything bright/cartoonish. Dark enough that every style
+// (dots, arcs, the tall ellipse) still reads as ink, not a coloured sticker.
+const EYE_COLOURS = ["#1c1410", "#3a2416", "#4a3221", "#5c6b3a", "#2f4f63", "#55565c", "#8a5a2e"];
+const EYE_COLOUR_NAMES = ["dark (default)", "brown", "hazel", "green", "blue", "grey", "amber"];
 
 export interface FaceGroup {
   key: FaceKey;
@@ -111,6 +137,7 @@ export const FACE_GROUPS: FaceGroup[] = [
   { key: "hs", label: "hairstyle", kind: "style", names: HAIRSTYLE_NAMES, view: "0 0 64 64" },
   { key: "hc", label: "hair colour", kind: "swatch", names: HAIR_COLOUR_NAMES, colors: HAIRS.map((h) => h.base) },
   { key: "ey", label: "eyes", kind: "style", names: EYE_NAMES, view: "12 18 40 26" },
+  { key: "ec", label: "eye colour", kind: "swatch", names: EYE_COLOUR_NAMES, colors: EYE_COLOURS },
   { key: "br", label: "eyebrows", kind: "style", names: BROW_NAMES, view: "12 18 40 26" },
   { key: "mo", label: "mouth", kind: "style", names: MOUTH_NAMES, view: "14 28 36 26" },
   { key: "bd", label: "facial hair", kind: "style", names: BEARD_NAMES, view: "10 22 44 34" },
@@ -132,15 +159,38 @@ const COUNTS: Record<FaceKey, number> = {
   gl: GLASSES_NAMES.length,
   ex: EXTRA_NAMES.length,
   of: OUTFITS.length,
+  ec: EYE_COLOURS.length,
 };
 
-export const DEFAULT_FACE: FaceConfig = { bg: 0, sk: 2, hc: 1, hs: 2, br: 1, ey: 0, mo: 0, bd: 0, gl: 0, ex: 0, of: 0 };
+export const DEFAULT_FACE: FaceConfig = { bg: 0, sk: 2, hc: 1, hs: 2, br: 1, ey: 0, mo: 0, bd: 0, gl: 0, ex: 0, of: 0, ec: 0 };
 
 // --- validation / (de)serialising -------------------------------------------
 
-// Strict on purpose: the exact key set, every value an in-range integer, a
-// hard length cap. Returns the normalised config, or null for anything else
-// (including legacy creature ids --- those go through isLegacyAvatarId).
+// Keys added after people already had faces stored in the live database.
+// Every row written before the key existed is missing it entirely --- there
+// is no way to tell "never set" from "explicitly 0" in old JSON, so the only
+// safe reading is "absent means the newest default (index 0)". Each entry
+// here must keep defaulting to 0 forever: changing what a MISSING key means
+// later would be exactly the silent rewrite CLAUDE.md forbids. A key only
+// goes in this set the day it's introduced; it never gets removed from it,
+// since old rows missing it never stop existing.
+const BACKWARD_COMPATIBLE_KEYS: ReadonlySet<FaceKey> = new Set<FaceKey>(["ec"]);
+
+// Strict on purpose: every KNOWN key either absent-and-defaulted (only for
+// keys in BACKWARD_COMPATIBLE_KEYS, meaning "this row predates the key") or
+// present as an in-range integer, no unknown/extra keys, a hard length cap.
+// Returns the normalised config, or null for anything else (including legacy
+// creature ids --- those go through isLegacyAvatarId).
+//
+// Why not just "fewer keys than FACE_KEYS.length is fine"? Because that would
+// also accept a config missing an OLD, always-required key (e.g. no "sk"),
+// silently defaulting someone's skin tone to 0 instead of rejecting a
+// malformed/truncated value. The three checks below instead are: (1) every
+// key in the object is one FACE_KEYS actually recognises, so no typos or
+// future-version keys slip through unnoticed, (2) every key that's PRESENT
+// is validated exactly as strictly as before, (3) every key that's ABSENT is
+// allowed only if it's in BACKWARD_COMPATIBLE_KEYS --- anything else missing
+// (an old required key) still fails the whole parse, same as today.
 export function parseAvatar(value: unknown): FaceConfig | null {
   if (typeof value !== "string" || value.length === 0 || value.length > MAX_AVATAR_LENGTH) return null;
   let raw: unknown;
@@ -151,9 +201,17 @@ export function parseAvatar(value: unknown): FaceConfig | null {
   }
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
-  if (Object.keys(obj).length !== FACE_KEYS.length) return null;
+  const keySet = new Set(Object.keys(obj));
+  for (const k of keySet) {
+    if (!FACE_KEYS.includes(k as FaceKey)) return null; // unknown/extra key
+  }
   const out = {} as FaceConfig;
   for (const key of FACE_KEYS) {
+    if (!keySet.has(key)) {
+      if (!BACKWARD_COMPATIBLE_KEYS.has(key)) return null; // an old required key is missing: reject
+      out[key] = 0;
+      continue;
+    }
     const n = obj[key];
     if (typeof n !== "number" || !Number.isInteger(n) || n < 0 || n >= COUNTS[key]) return null;
     out[key] = n;
@@ -173,10 +231,14 @@ export function randomFace(rng: () => number = Math.random): FaceConfig {
   const face = {} as FaceConfig;
   for (const key of FACE_KEYS) face[key] = pick(COUNTS[key]);
   // keep random faces mostly "natural": dyed hair, hats and party hats stay
-  // possible but rarer, and a hat doesn't need a hairstyle fight.
-  if (face.hc >= 7 && rng() < 0.6) face.hc = pick(7);
+  // possible but rarer, and a hat doesn't need a hairstyle fight. Indices
+  // 7,8,9 (pink/blue/purple) and 13 (mint green) are the playful dyed
+  // colours; 10-12 (espresso brown/dirty blonde/ash grey, appended with the
+  // other natural tones) stay as common as the original natural spread.
+  const DYED_HAIR = new Set([7, 8, 9, 13]);
+  if (DYED_HAIR.has(face.hc) && rng() < 0.6) face.hc = pick(7);
   if (face.ex !== 4 && rng() < 0.45) face.ex = 0;
-  if (face.hs >= 9 && rng() < 0.6) face.hs = pick(9); // balding stages: possible but rarer
+  if (face.hs >= 9 && face.hs <= 12 && rng() < 0.6) face.hs = pick(9); // balding stages: possible but rarer
   if (face.gl > 0 && rng() < 0.4) face.gl = 0;
   if (face.bd > 0 && rng() < 0.5) face.bd = 0;
   return face;
@@ -211,6 +273,16 @@ function hairBack(style: number, c: string): string {
       return `<path d="M18.2 22.5 C12.6 26 12.4 36.5 16.8 40.6 Q18.2 41.4 19.2 39.6 L19.2 22.5Z M45.8 22.5 C51.4 26 51.6 36.5 47.2 40.6 Q45.8 41.4 44.8 39.6 L44.8 22.5Z" fill="${c}"/>`;
     case 7: // bun
       return `<circle cx="32" cy="9.5" r="6.5" fill="${c}"/>`;
+    // --- appended: never reorder/renumber the styles above ---
+    case 14: // braids: a handful of braided strands hanging past the shoulders
+      return [20, 24, 28, 36, 40, 44]
+        .map((x, i) => `<path d="M${x} ${34 + (i % 2)} q${i < 3 ? -0.6 : 0.6} 11 0 22" stroke="${c}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`)
+        .join("");
+    case 15: // top knot: the knot itself, wrapped with a tie band
+      return (
+        `<ellipse cx="32" cy="9" rx="5.6" ry="6.4" fill="${c}"/>` +
+        `<path d="M27 9.6 Q32 12.6 37 9.6" stroke="#000" stroke-opacity="0.25" stroke-width="1.3" fill="none" stroke-linecap="round"/>`
+      );
     default:
       return "";
   }
@@ -285,19 +357,35 @@ function hairFront(style: number, c: string): string {
       return `<path d="M18.4 22.2 C15.2 25.4 14.8 29.2 15.8 31.4 L18.4 30.6 C18 27.6 18.9 25 20.2 23.4Z M45.6 22.2 C48.8 25.4 49.2 29.2 48.2 31.4 L45.6 30.6 C46 27.6 45.1 25 43.8 23.4Z" fill="${c}"/>`;
     case 12: // shaved: a head shaved close, just the shadow of hair where it grew (same trick as stubble, kept inside the head outline)
       return `<path d="M17.02 30 A15 17 0 0 1 46.98 30 C45.5 23 40 19.5 32 19.5 C24 19.5 18.5 23 17.02 30Z" fill="${c}" opacity="0.3"/>`;
+    // --- appended: never reorder/renumber the styles above ---
+    case 13: // bob: a blunt, chin-length cap, straight all round
+      return `<path d="${headCap(31)} C47 27 47.5 36 44.5 41.5 Q32 45 19.5 41.5 C16.5 36 17 27 16.3 31Z" fill="${c}"/>`;
+    case 14: // braids: a close scalp cap, the braids themselves hang from the back layer
+      return `<path d="${headCap(30)} C45.5 24 40 20.5 32 20.5 C24 20.5 18.5 24 17.02 30Z" fill="${c}"/>`;
+    case 15: // top knot: shaved-in sides/front, hair pulled up into the knot (back layer)
+      return `<path d="${headCap(28.5)} C44.5 23.5 40 21 32 21 C24 21 19.5 23.5 17.5 28.5Z" fill="${c}"/>`;
+    case 16: // mohawk: a narrow crest down the centre, sides left bare (skin shows)
+      return `<path d="M28.6 15 Q32 10.5 35.4 15 Q37 28 35.6 46 Q32 49.4 28.4 46 Q27 28 28.6 15Z" fill="${c}"/>`;
+    case 17: // waves: a short, combed-back wavy crop
+      return (
+        `<path d="${headCap(27)} C45.5 22 40 19.5 32 19.5 C24 19.5 18.5 22 16.9 27Z" fill="${c}"/>` +
+        `<path d="M20 22.5 Q23.5 25 20.5 27.5 M27 20.5 Q30.5 23 27.5 25.5 M34 20.5 Q37.5 23 34.5 25.5 M41 22.5 Q44.5 25 41.5 27.5" stroke="#000" stroke-opacity="0.18" stroke-width="1" stroke-linecap="round" fill="none"/>`
+      );
     default:
       return "";
   }
 }
 
-function eyes(style: number): string {
+// `ink` is the eye colour (tints iris/pupil marks only --- eyebrows pass
+// their own separate colour to brows(), unaffected by this).
+function eyes(style: number, ink: string = INK): string {
   const L = 25.5;
   const R = 38.5;
   const dot = (x: number, r: number, hl = true) =>
-    `<circle cx="${x}" cy="31" r="${r}" fill="${INK}"/>` +
+    `<circle cx="${x}" cy="31" r="${r}" fill="${ink}"/>` +
     (hl ? `<circle cx="${x - r * 0.35}" cy="${31 - r * 0.38}" r="${Math.max(0.7, r * 0.3)}" fill="#fff"/>` : "");
-  const arcUp = (x: number) => `<path d="M${x - 3.2} 32.2 Q${x} 27.6 ${x + 3.2} 32.2" stroke="${INK}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
-  const arcDown = (x: number) => `<path d="M${x - 3.2} 30.6 Q${x} 33.8 ${x + 3.2} 30.6" stroke="${INK}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+  const arcUp = (x: number) => `<path d="M${x - 3.2} 32.2 Q${x} 27.6 ${x + 3.2} 32.2" stroke="${ink}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+  const arcDown = (x: number) => `<path d="M${x - 3.2} 30.6 Q${x} 33.8 ${x + 3.2} 30.6" stroke="${ink}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
   switch (style) {
     case 1:
       return dot(L, 3.3) + dot(R, 3.3);
@@ -309,7 +397,7 @@ function eyes(style: number): string {
       return dot(L, 2.7) + arcUp(R);
     case 5: {
       const tall = (x: number) =>
-        `<ellipse cx="${x}" cy="31" rx="2.3" ry="3.4" fill="${INK}"/><circle cx="${x - 0.8}" cy="29.6" r="0.9" fill="#fff"/>`;
+        `<ellipse cx="${x}" cy="31" rx="2.3" ry="3.4" fill="${ink}"/><circle cx="${x - 0.8}" cy="29.6" r="0.9" fill="#fff"/>`;
       return tall(L) + tall(R);
     }
     default:
@@ -430,6 +518,8 @@ function extras(style: number, outfit: string): string {
         `<path d="M27 12.6 L38 14.2 M25 16.6 L40.2 17.6" stroke="#fff" stroke-width="1.7" stroke-linecap="round" opacity="0.75"/>` +
         `<circle cx="33" cy="1.6" r="2.6" fill="#f7c948"/>`
       );
+    case 8: // nose ring: a small dark-metal hoop at the side of the nose (nose area y 34-38, see header)
+      return `<circle cx="34.6" cy="37.2" r="1.5" fill="none" stroke="#9aa0a6" stroke-width="1.1"/>`;
     default:
       return "";
   }
@@ -461,7 +551,7 @@ export function renderFaceSvg(face: FaceConfig): string {
     beard(face.bd, hair.base, skin.base),
     mouth(face.mo, skin.ink),
     hatCovers ? (face.hs === 8 ? mulletSides(hair.base) : "") : hairFront(face.hs, hair.base),
-    eyes(face.ey),
+    eyes(face.ey, EYE_COLOURS[face.ec]),
     brows(face.br, hair.dark),
     glasses(face.gl, outfit),
     extras(face.ex, outfit),
