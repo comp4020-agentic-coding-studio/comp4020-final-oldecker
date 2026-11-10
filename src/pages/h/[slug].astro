@@ -15,6 +15,7 @@ import FrontDoorKnocks from "../../components/FrontDoorKnocks.astro";
 import PushToggle from "../../components/PushToggle.astro";
 import LevelFlair from "../../components/LevelFlair.astro";
 import Lightbox from "../../components/Lightbox.astro";
+import InfoButton from "../../components/InfoButton.astro";
 import { logVisit } from "../../lib/audit";
 import { earnedToday, houseLeaderboard } from "../../lib/activity";
 import { bedroomCount, bedroomHtml } from "../../lib/bedroom";
@@ -743,12 +744,6 @@ const CATEGORY_LABEL: Record<string, string> = {
         margin: 0 0 0.2rem;
         font-size: 1rem;
       }
-      .party-hint,
-      .corridor-hint {
-        margin: 0 0 0.8rem;
-        font-size: 0.8rem;
-        color: var(--text-muted);
-      }
 
       /* --- the house bar: the house's name, invite, log out. The way out
          to the street is the open door at the end of the corridor, not a
@@ -876,9 +871,6 @@ const CATEGORY_LABEL: Record<string, string> = {
         z-index: 1;
         /* the corridor's right padding (kept for the street door) also
            leaves the top-right corner to the picture on the wall */
-      }
-      .corridor-hint {
-        margin-top: 0.15rem;
       }
       .corridor-scene {
         position: absolute;
@@ -1785,8 +1777,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                   </svg>
                 </div>
                 <div class="corridor-head">
-                  <h2>the corridor</h2>
-                  <p class="corridor-hint">who's in the house right now. Drag yourself into the party room, or out the door to the street.</p>
+                  <h2>the corridor <InfoButton id="corridor-info" label="about the corridor">who's in the house right now. Drag yourself into the party room, or out the door to the street.</InfoButton></h2>
                 </div>
                 <div class="corridor-floor-row">
                   <span
@@ -1848,8 +1839,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 
               <div class="party-widget">
                 <div class="party-head">
-                  <h2>🎉 the party room</h2>
-                  <p class="party-hint">drag your avatar in to say you're free to hang out for a couple of hours</p>
+                  <h2>🎉 the party room <InfoButton id="party-info" label="about the party room">drag your avatar in to say you're free to hang out for a couple of hours</InfoButton></h2>
                 </div>
                 <div class="party-room-dropzone" id="party-room-dropzone">
                   {/* the room itself: pure decoration, pointer-events:none, so the
@@ -1954,9 +1944,8 @@ const CATEGORY_LABEL: Record<string, string> = {
                   <h2 id="bedroom-title">
                     🛏️ the bedroom<span class="bedroom-count" id="bedroom-count"
                       >{bedroomCount(members, awakeIds, person.id)}</span
-                    >
+                    > <InfoButton id="bedroom-info" label="about the bedroom">everyone who lives here but isn't around right now. Double-tap anyone to tell them ich hab dich lieb ❤</InfoButton>
                   </h2>
-                  <p class="bedroom-hint">everyone who lives here but isn't around right now. Double-tap anyone to tell them ich hab dich lieb ❤</p>
                 </div>
                 <div class="bedroom-beds" id="bedroom-beds" set:html={bedroomHtml(members, awakeIds, person.id)} />
                 <script type="application/json" id="bedroom-data" set:html={bedroomJson} />
@@ -2124,6 +2113,7 @@ const CATEGORY_LABEL: Record<string, string> = {
                     {myProgress.nextLevel === null ? `level ${myActivity.level} · the top` : `level ${myActivity.level}`}
                   </strong>
                   <span id="level-progress-text">{progressLine(myActivity.points)}</span>
+                  <InfoButton id="lvl-info" label="how levels work">each kind of thing counts once a day, over the last 7 days. Showing up at all in a week (even just opening the board) keeps your weekly streak going: +1 pt a week from 2 weeks on, up to +8.</InfoButton>
                 </div>
                 <div
                   class="lvl-bar"
@@ -2147,9 +2137,6 @@ const CATEGORY_LABEL: Record<string, string> = {
                     </li>
                   ))}
                 </ul>
-                <p class="lvl-hint-note">
-                  each kind of thing counts once a day, over the last 7 days. Showing up at all in a week (even just opening the board) keeps your weekly streak going: +1 pt a week from 2 weeks on, up to +8.
-                </p>
               </div>
             </div>
 
@@ -2267,8 +2254,7 @@ const CATEGORY_LABEL: Record<string, string> = {
             {/* Who's been around this week, in this house only. Ranked by
                 points (ties share a rank); live via level-dom.ts. */}
             <section class="lb" id="leaderboard" aria-labelledby="leaderboard-title">
-              <h2 id="leaderboard-title">🏅 who's been around</h2>
-              <p class="lb-hint">levels from the last 7 days in {house.name}. Badges show on everyone's avatar. The flame is a weekly streak: weeks in a row with at least one visit.</p>
+              <h2 id="leaderboard-title">🏅 who's been around <InfoButton id="lb-info" label="about the leaderboard">levels from the last 7 days in {house.name}. Badges show on everyone's avatar. The flame is a weekly streak: weeks in a row with at least one visit.</InfoButton></h2>
               <ol class="lb-list" id="leaderboard-list">
                 {leaderboard.map((r) => (
                   <li
