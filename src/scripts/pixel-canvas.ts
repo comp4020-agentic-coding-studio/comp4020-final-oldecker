@@ -1,7 +1,7 @@
 // Your own placements on the shared pixel canvas. A pixel someone ELSE
 // places arrives through live.ts instead (same split as the plant: your own
 // action here, everyone else's over SSE).
-import { PALETTE } from "../lib/canvas";
+import { cooldownRingOffset, PALETTE } from "../lib/canvas";
 import { formatWait } from "../lib/levels";
 import { applyCanvasName } from "./canvas-dom";
 import { houseUrl } from "./house-context";
@@ -9,6 +9,8 @@ import { applyLevel } from "./level-dom";
 
 const svg = document.querySelector<SVGSVGElement>("#pixel-canvas");
 const cooldownLabel = document.querySelector<HTMLElement>("#canvas-cooldown");
+const cooldownRing = document.querySelector<HTMLElement>("#cooldown-ring");
+const cooldownRingFill = document.querySelector<SVGCircleElement>("#cooldown-ring-fill");
 const ownPersonId = document.querySelector<HTMLElement>("#level-progress")?.dataset.personId ?? "";
 const swatches = document.querySelectorAll<HTMLButtonElement>(".canvas-swatch");
 
@@ -19,7 +21,13 @@ let cooldownUntil = 0; // unix seconds; 0 means "not on cooldown"
 // How long the wait in progress was meant to be in total, so a level-up
 // mid-wait can work out when the placement that started it happened.
 let cooldownLength = 0;
-let countdownTimer: ReturnType<typeof setInterval> | undefined;
+// The ring ticks on requestAnimationFrame rather than a once-a-second
+// setInterval: the arc itself (stroke-dashoffset, one attribute write) can
+// then move smoothly between the once-a-second text updates, instead of
+// jumping in the same steps as the "7m 32s" label. No full SVG rebuild
+// either tick --- just the one attribute and the one text node.
+let rafId: number | undefined;
+let lastLabelSecond = -1;
 
 const initialRemaining = Number(cooldownLabel?.dataset.cooldown ?? "0");
 const initialLength = Number(document.querySelector<HTMLElement>("#canvas-level")?.dataset.cooldownSeconds ?? "0");
@@ -32,23 +40,46 @@ for (const swatch of swatches) {
   });
 }
 
+function setReady(): void {
+  cooldownUntil = 0;
+  cooldownRing?.setAttribute("data-cooldown", "0");
+  if (cooldownLabel) {
+    cooldownLabel.textContent = "ready";
+    cooldownLabel.dataset.cooldown = "0";
+  }
+  cooldownRingFill?.setAttribute("stroke-dashoffset", String(cooldownRingOffset(0)));
+}
+
 function startCooldown(seconds: number, length: number): void {
   cooldownUntil = nowSecs() + seconds;
   cooldownLength = length;
-  clearInterval(countdownTimer);
-  const tick = () => {
-    const remaining = cooldownUntil - nowSecs();
-    if (remaining <= 0) {
-      clearInterval(countdownTimer);
-      cooldownUntil = 0;
-      if (cooldownLabel) cooldownLabel.textContent = "ready to place";
+  cooldownRing?.setAttribute("data-cooldown", String(seconds));
+  cooldownRing?.setAttribute("data-cooldown-length", String(length));
+  lastLabelSecond = -1;
+  if (rafId !== undefined) cancelAnimationFrame(rafId);
+
+  const frame = () => {
+    const remainingMs = cooldownUntil * 1000 - Date.now();
+    if (remainingMs <= 0) {
+      setReady();
+      rafId = undefined;
       return;
     }
-    // "4m 32s", not "272s": at the low levels the wait is minutes long.
-    if (cooldownLabel) cooldownLabel.textContent = `wait ${formatWait(remaining)} to place again`;
+    const remainingSeconds = remainingMs / 1000;
+    const fraction = length > 0 ? remainingSeconds / length : 0;
+    cooldownRingFill?.setAttribute("stroke-dashoffset", String(cooldownRingOffset(fraction)));
+    // The text only needs to change once a second, not every frame.
+    const whole = Math.ceil(remainingSeconds);
+    if (whole !== lastLabelSecond) {
+      lastLabelSecond = whole;
+      if (cooldownLabel) {
+        cooldownLabel.textContent = formatWait(remainingSeconds);
+        cooldownLabel.dataset.cooldown = String(whole);
+      }
+    }
+    rafId = requestAnimationFrame(frame);
   };
-  tick();
-  countdownTimer = setInterval(tick, 1000);
+  frame();
 }
 
 // Levelling up from anything else (watering, posting, another tab) shortens

@@ -153,6 +153,8 @@ function renderProgress(level: number, points: number, streak: number, countedTh
     levelLabel.textContent = levelLine(level, cooldownFor(level));
     levelLabel.dataset.cooldownSeconds = String(cooldownFor(level));
   }
+  // The ring's colour follows the level, same as the avatar flair's ring.
+  document.querySelector<HTMLElement>("#cooldown-ring")?.setAttribute("data-level", String(level));
 }
 
 // Which actions already scored today: asked of the server after you earn

@@ -38,6 +38,21 @@ export function isValidColorIndex(n: number): boolean {
   return Number.isInteger(n) && n >= 0 && n < PALETTE.length;
 }
 
+// The cooldown ring's geometry (src/pages/h/[slug].astro's circular
+// countdown next to the wall, driven client-side by pixel-canvas.ts). One
+// radius shared by the server's initial stroke-dashoffset and the client's
+// per-tick one, so they can't drift on the circle's circumference.
+export const COOLDOWN_RING_RADIUS = 15;
+export const COOLDOWN_RING_CIRCUMFERENCE = 2 * Math.PI * COOLDOWN_RING_RADIUS;
+
+// The ring's stroke-dashoffset for a given fraction of the wait still left
+// (1 = just placed, full ring; 0 = ready, empty ring) --- the arc drains as
+// the wait runs out.
+export function cooldownRingOffset(fractionRemaining: number): number {
+  const f = Math.min(1, Math.max(0, fractionRemaining));
+  return COOLDOWN_RING_CIRCUMFERENCE * (1 - f);
+}
+
 /** Seconds still to wait, given the last placement's unix timestamp; 0 once the cooldown has fully elapsed. */
 export function cooldownRemaining(
   lastPlacedAt: number | null,
