@@ -928,7 +928,10 @@ const CATEGORY_LABEL: Record<string, string> = {
       }
       .corridor-head {
         position: relative;
-        z-index: 1;
+        /* Above .corridor-floor-row (also z-index: 1, but later in the DOM,
+           so it would otherwise win the tie and paint over the info
+           button's popover --- see PROCESS.md). */
+        z-index: 2;
         /* the corridor's right padding (kept for the street door) also
            leaves the top-right corner to the picture on the wall */
       }

@@ -22,7 +22,11 @@
 }
 .bedroom-head {
   position: relative;
-  z-index: 1;
+  /* Above .bedroom-beds (also z-index: 1, but later in the DOM, so it would
+     otherwise win the tie and paint over the info button's popover --- see
+     PROCESS.md). The head's own stacking context needs to come out on top so
+     everything inside it, popover included, does too. */
+  z-index: 2;
   /* leaves the top-right corner to the night window */
   padding-right: 5.5rem;
 }

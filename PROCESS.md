@@ -67,3 +67,32 @@ Verified: `pnpm typecheck` (0 errors, 0 warnings), `pnpm build`, and `pnpm test`
 The wall's "wait 7m 32s" text became a small SVG ring --- a background track plus a foreground arc whose `stroke-dashoffset` drains as the wait runs out --- next to the unchanged level line. The split follows a rule the rest of the app already uses for the plant and the levels bar: the server computes the true starting state (a `stroke-dashoffset` from the same fraction-remaining math the text uses) so a reload mid-cooldown shows the right angle immediately, and the client only animates from there, on `requestAnimationFrame` rather than a once-a-second rebuild, so the arc itself can move more smoothly than the text does without either rebuilding the SVG or drifting from the number beside it. `src/lib/canvas.ts` got one new, pure export (`cooldownRingOffset`) so the server and the client read the same circumference off the same radius, the same way `cooldownRemaining` already keeps the API route and the page in step.
 
 The ring is `aria-hidden`: the text it sits next to is the only thing that ever carried the cooldown's meaning, and it still does, just shorter ("8m 22s" instead of "wait 8m 22s to place again") so it reads as a label next to a dial rather than a full sentence floating beside a circle. Not everyone reads an analogue face at a glance, which is the whole reason the text stayed.
+
+## The info popover was drawing behind the bedroom and corridor
+
+Feedback: the bedroom's info button opened a popover that got covered by the
+beds instead of sitting on top of them. The corridor had the same bug, waiting
+to be noticed.
+
+Both sections wrap their heading in its own positioned box --- `.corridor-head`
+and `.bedroom-head` --- sitting next to a sibling that's also positioned at the
+same `z-index: 1`: `.corridor-floor-row` and `.bedroom-beds`. Equal `z-index`
+is broken by DOM order, and both siblings come *after* the head in the markup,
+so they painted on top of it, popover and all, even though the popover's own
+`z-index: 5` was higher --- that number only wins within its own stacking
+context, and the head's context as a whole was still losing to its neighbour.
+The fix raises each head to `z-index: 2`, so its whole stacking context,
+popover included, comes out on top; the beds and the corridor floor keep their
+own `z-index: 1`, so nothing else about their layering changes.
+
+I checked every other `InfoButton` placement (the party room, the level
+progress bar, the leaderboard) for the same shape and found none: their
+heading wrappers aren't positioned at all, so they paint in plain document
+order with nothing to lose a tie against.
+
+Verified: `pnpm typecheck` (0/0), `pnpm build`, `pnpm test` twice (90/90)
+against a scratch database. A throwaway Playwright check opened both
+popovers in a real Chromium and read back `document.elementFromPoint()` at
+each popover's own centre --- confirming the popover itself, not a bed or a
+corridor avatar, is the topmost element there --- then screenshotted both to
+confirm the same thing by eye.
